@@ -104,8 +104,8 @@ export const TRAIT_AXES = [
 ] as const;
 export type TraitAxis = typeof TRAIT_AXES[number];
 
-export function getMatchColor(score: number): "green" | "yellow" | "red" {
+export function getMatchColor(score: number): "green" | "yellow" | "grey" {
   if (score >= 75) return "green";
   if (score >= 50) return "yellow";
-  return "red";
+  return "grey";
 }

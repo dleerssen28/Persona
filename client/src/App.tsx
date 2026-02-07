@@ -17,7 +17,6 @@ import OnboardingPage from "@/pages/onboarding";
 import ProfilePage from "@/pages/profile";
 import RecommendationsPage from "@/pages/recommendations";
 import SocialPage from "@/pages/social";
-import ExplorePage from "@/pages/explore";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -26,7 +25,6 @@ function Router() {
       <Route path="/" component={ProfilePage} />
       <Route path="/recommendations" component={RecommendationsPage} />
       <Route path="/social" component={SocialPage} />
-      <Route path="/explore" component={ExplorePage} />
       <Route component={NotFound} />
     </Switch>
   );

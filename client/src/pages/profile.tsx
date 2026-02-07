@@ -27,7 +27,7 @@ const TRAIT_LABELS: Record<string, string> = {
 function getTraitColor(val: number) {
   if (val >= 0.75) return { bar: "bg-emerald-500", text: "text-emerald-400", label: "Strong" };
   if (val >= 0.5) return { bar: "bg-amber-500", text: "text-amber-400", label: "Moderate" };
-  return { bar: "bg-rose-500/70", text: "text-rose-400", label: "Low" };
+  return { bar: "bg-zinc-500", text: "text-zinc-400", label: "Low" };
 }
 
 interface ProfileSection {
@@ -273,11 +273,11 @@ export default function ProfilePage() {
         <div className="flex gap-3 overflow-x-auto pb-2">
           {topHobbies.map((hobby) => {
             const img = getHobbyImage(hobby.title);
-            const scoreColor = hobby.matchScore >= 75 ? "green" : hobby.matchScore >= 50 ? "yellow" : "red";
+            const scoreColor = hobby.matchScore >= 75 ? "green" : hobby.matchScore >= 50 ? "yellow" : "grey";
             const colorClasses = {
               green: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
               yellow: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-              red: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+              grey: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
             };
             return (
               <div key={hobby.id} className="flex-shrink-0 w-28">

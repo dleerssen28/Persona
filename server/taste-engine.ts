@@ -31,15 +31,15 @@ function computeDistanceScore(traitsA: Record<string, number>, traitsB: Record<s
     sumSqDiff += diff * diff;
   }
   const rmsDiff = Math.sqrt(sumSqDiff / TRAIT_AXES.length);
-  const similarity = 1 - rmsDiff * 2;
-  const score = Math.max(0, Math.min(100, Math.round(similarity * 100)));
+  const similarity = 1 - rmsDiff * 1.4;
+  const score = Math.max(15, Math.min(100, Math.round(similarity * 100)));
   return score;
 }
 
 export function computeMatchScore(
   profileA: TasteProfile,
   profileB: TasteProfile
-): { score: number; color: "green" | "yellow" | "red"; explanations: string[] } {
+): { score: number; color: "green" | "yellow" | "grey"; explanations: string[] } {
   const traitsA = getTraitsFromProfile(profileA);
   const traitsB = getTraitsFromProfile(profileB);
 

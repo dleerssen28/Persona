@@ -39,25 +39,25 @@ interface MatchedUser {
 function getScoreColor(score: number) {
   if (score >= 75) return "green" as const;
   if (score >= 50) return "yellow" as const;
-  return "red" as const;
+  return "grey" as const;
 }
 
 const COLOR_TEXT = {
   green: "text-emerald-400",
   yellow: "text-amber-400",
-  red: "text-rose-400",
+  grey: "text-zinc-400",
 };
 
 const COLOR_BG = {
   green: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   yellow: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  red: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+  grey: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
 };
 
 const COLOR_AVATAR_RING = {
   green: "ring-2 ring-emerald-500/40",
   yellow: "ring-2 ring-amber-500/40",
-  red: "ring-2 ring-rose-500/30",
+  grey: "ring-2 ring-zinc-500/30",
 };
 
 export default function SocialPage() {
@@ -152,7 +152,7 @@ export default function SocialPage() {
                       {matchedUser.explanations.slice(0, 2).map((exp, i) => (
                         <div key={i} className="flex items-start gap-1.5">
                           <span className={cn("inline-block h-1.5 w-1.5 rounded-full mt-1 shrink-0",
-                            color === "green" ? "bg-emerald-400" : color === "yellow" ? "bg-amber-400" : "bg-rose-400"
+                            color === "green" ? "bg-emerald-400" : color === "yellow" ? "bg-amber-400" : "bg-zinc-400"
                           )} />
                           {exp}
                         </div>
@@ -214,7 +214,7 @@ export default function SocialPage() {
                           {matchedUser.explanations.map((exp, i) => (
                             <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
                               <span className={cn("inline-block h-1.5 w-1.5 rounded-full mt-1.5 shrink-0",
-                                color === "green" ? "bg-emerald-400" : color === "yellow" ? "bg-amber-400" : "bg-rose-400"
+                                color === "green" ? "bg-emerald-400" : color === "yellow" ? "bg-amber-400" : "bg-zinc-400"
                               )} />
                               {exp}
                             </div>

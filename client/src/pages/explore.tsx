@@ -24,19 +24,19 @@ interface HobbyWithMatch extends Hobby {
 function getScoreColor(score: number) {
   if (score >= 75) return "green" as const;
   if (score >= 50) return "yellow" as const;
-  return "red" as const;
+  return "grey" as const;
 }
 
 const COLOR_TEXT = {
   green: "text-emerald-400",
   yellow: "text-amber-400",
-  red: "text-rose-400",
+  grey: "text-zinc-400",
 };
 
 const COLOR_BG_BADGE = {
   green: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   yellow: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  red: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+  grey: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
 };
 
 export default function ExplorePage() {
@@ -64,7 +64,7 @@ export default function ExplorePage() {
           Discover Hobbies
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Activities matched to your personality. Green = great fit, yellow = good fit, red = stretch.
+          Activities matched to your personality. Green = great fit, yellow = good fit.
         </p>
       </div>
 
@@ -140,7 +140,7 @@ export default function ExplorePage() {
 
                     <div className="flex items-start gap-1.5 text-xs">
                       <Sparkles className={cn("h-3 w-3 mt-0.5 shrink-0",
-                        color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-rose-400"
+                        color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
                       )} />
                       <span className="text-muted-foreground">{hobby.whyItFits}</span>
                     </div>
@@ -181,7 +181,7 @@ export default function ExplorePage() {
                             <div className="space-y-2">
                               <h4 className="text-sm font-semibold flex items-center gap-1.5">
                                 <Sparkles className={cn("h-3.5 w-3.5",
-                                  color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-rose-400"
+                                  color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
                                 )} />
                                 Why it fits you
                               </h4>

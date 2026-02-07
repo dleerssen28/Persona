@@ -8,18 +8,18 @@ interface MatchPillProps {
 }
 
 export function MatchPill({ score, size = "md", showLabel = true, className }: MatchPillProps) {
-  const color = score >= 75 ? "green" : score >= 50 ? "yellow" : "red";
+  const color = score >= 75 ? "green" : score >= 50 ? "yellow" : "grey";
 
   const colorClasses = {
     green: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
     yellow: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-    red: "bg-rose-500/15 text-rose-400 border-rose-500/30",
+    grey: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
   };
 
   const glowClasses = {
     green: "shadow-[0_0_12px_rgba(16,185,129,0.2)]",
     yellow: "shadow-[0_0_12px_rgba(245,158,11,0.2)]",
-    red: "shadow-[0_0_12px_rgba(244,63,94,0.15)]",
+    grey: "",
   };
 
   const sizeClasses = {
@@ -44,7 +44,7 @@ export function MatchPill({ score, size = "md", showLabel = true, className }: M
         size === "sm" ? "h-1.5 w-1.5" : "h-2 w-2",
         color === "green" && "bg-emerald-400",
         color === "yellow" && "bg-amber-400",
-        color === "red" && "bg-rose-400",
+        color === "grey" && "bg-zinc-400",
       )} />
       {score}%{showLabel && <span className="opacity-70 font-normal ml-0.5">match</span>}
     </span>
@@ -52,12 +52,12 @@ export function MatchPill({ score, size = "md", showLabel = true, className }: M
 }
 
 export function MatchGlow({ score, children, className }: { score: number; children: React.ReactNode; className?: string }) {
-  const color = score >= 75 ? "green" : score >= 50 ? "yellow" : "red";
+  const color = score >= 75 ? "green" : score >= 50 ? "yellow" : "grey";
 
   const glowClasses = {
     green: "ring-1 ring-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.08)]",
     yellow: "ring-1 ring-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.08)]",
-    red: "ring-1 ring-rose-500/15",
+    grey: "ring-1 ring-zinc-500/15",
   };
 
   return (
