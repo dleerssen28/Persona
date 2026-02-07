@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RadarChart } from "@/components/radar-chart";
 import { MatchPill } from "@/components/match-pill";
-import { Sparkles, Users, Compass, Zap, ArrowRight, Brain, Heart } from "lucide-react";
+import { Sparkles, Users, Compass, Zap, ArrowRight, Brain } from "lucide-react";
 
 const sampleTraits = {
   novelty: 0.82,
@@ -25,7 +25,7 @@ export default function LandingPage() {
             <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
               <Sparkles className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="font-semibold text-lg tracking-tight" data-testid="text-app-name">PersonaGraph</span>
+            <span className="font-semibold text-lg tracking-tight" data-testid="text-app-name">Persona</span>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -49,7 +49,7 @@ export default function LandingPage() {
                 <span className="block text-primary mt-1">Taste DNA</span>
               </h1>
               <p className="text-lg text-muted-foreground max-w-lg leading-relaxed">
-                PersonaGraph maps your preferences across movies, music, games, food, and hobbies into a unique profile that connects you with truly compatible people and experiences.
+                Persona maps your preferences across movies, music, games, food, and hobbies into a unique profile that connects you with truly compatible people and experiences.
               </p>
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <a href="/api/login">
@@ -61,12 +61,12 @@ export default function LandingPage() {
               </div>
               <div className="flex items-center gap-4 text-sm text-muted-foreground pt-2">
                 <div className="flex items-center gap-1.5">
-                  <Heart className="h-3.5 w-3.5 text-primary" />
-                  <span>Free forever</span>
-                </div>
-                <div className="flex items-center gap-1.5">
                   <Zap className="h-3.5 w-3.5 text-primary" />
                   <span>Instant matching</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Brain className="h-3.5 w-3.5 text-primary" />
+                  <span>8-trait taste engine</span>
                 </div>
               </div>
             </div>
@@ -128,7 +128,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
-            <span>PersonaGraph</span>
+            <span>Persona</span>
           </div>
           <p>Built with taste intelligence</p>
         </div>

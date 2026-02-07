@@ -24,6 +24,18 @@ export function getTraitsFromProfile(profile: TasteProfile): Record<string, numb
   };
 }
 
+function computeDistanceScore(traitsA: Record<string, number>, traitsB: Record<string, number>): number {
+  let sumSqDiff = 0;
+  for (const axis of TRAIT_AXES) {
+    const diff = (traitsA[axis] ?? 0.5) - (traitsB[axis] ?? 0.5);
+    sumSqDiff += diff * diff;
+  }
+  const rmsDiff = Math.sqrt(sumSqDiff / TRAIT_AXES.length);
+  const similarity = 1 - rmsDiff * 2;
+  const score = Math.max(0, Math.min(100, Math.round(similarity * 100)));
+  return score;
+}
+
 export function computeMatchScore(
   profileA: TasteProfile,
   profileB: TasteProfile
@@ -31,21 +43,7 @@ export function computeMatchScore(
   const traitsA = getTraitsFromProfile(profileA);
   const traitsB = getTraitsFromProfile(profileB);
 
-  let dotProduct = 0;
-  let magA = 0;
-  let magB = 0;
-
-  for (const axis of TRAIT_AXES) {
-    const a = traitsA[axis];
-    const b = traitsB[axis];
-    dotProduct += a * b;
-    magA += a * a;
-    magB += b * b;
-  }
-
-  const cosineSim = dotProduct / (Math.sqrt(magA) * Math.sqrt(magB) + 1e-9);
-  const rawScore = Math.round(cosineSim * 100);
-  const score = Math.max(0, Math.min(100, rawScore));
+  const score = computeDistanceScore(traitsA, traitsB);
 
   const explanations: string[] = [];
   const traitDiffs: { axis: string; diff: number; valA: number; valB: number }[] = [];
@@ -86,20 +84,7 @@ export function computeItemMatchScore(
 ): { score: number; explanation: string } {
   const userTraits = getTraitsFromProfile(profile);
 
-  let dotProduct = 0;
-  let magA = 0;
-  let magB = 0;
-
-  for (const axis of TRAIT_AXES) {
-    const a = userTraits[axis];
-    const b = itemTraits[axis] ?? 0.5;
-    dotProduct += a * b;
-    magA += a * a;
-    magB += b * b;
-  }
-
-  const cosineSim = dotProduct / (Math.sqrt(magA) * Math.sqrt(magB) + 1e-9);
-  const score = Math.max(0, Math.min(100, Math.round(cosineSim * 100)));
+  const score = computeDistanceScore(userTraits, itemTraits);
 
   const closestAxis = TRAIT_AXES.reduce((best, axis) => {
     const diff = Math.abs(userTraits[axis] - (itemTraits[axis] ?? 0.5));
@@ -118,20 +103,7 @@ export function computeHobbyMatch(
 ): { score: number; whyItFits: string } {
   const userTraits = getTraitsFromProfile(profile);
 
-  let dotProduct = 0;
-  let magA = 0;
-  let magB = 0;
-
-  for (const axis of TRAIT_AXES) {
-    const a = userTraits[axis];
-    const b = hobbyTraits[axis] ?? 0.5;
-    dotProduct += a * b;
-    magA += a * a;
-    magB += b * b;
-  }
-
-  const cosineSim = dotProduct / (Math.sqrt(magA) * Math.sqrt(magB) + 1e-9);
-  const score = Math.max(0, Math.min(100, Math.round(cosineSim * 100)));
+  const score = computeDistanceScore(userTraits, hobbyTraits);
 
   const strongMatches: string[] = [];
   for (const axis of TRAIT_AXES) {
@@ -224,7 +196,7 @@ export function buildTraitsFromSelections(
     "puzzle": { strategy: 0.7, creativity: 0.6 },
     "simulation": { strategy: 0.5, cozy: 0.6 },
     "relaxing": { cozy: 0.9 },
-    "fighting": { intensity: 0.8, competitive: 0.7 },
+    "fighting": { intensity: 0.8 },
     "skill": { strategy: 0.6, intensity: 0.6 },
     "mmo": { social: 0.9 },
     "grinding": { intensity: 0.5 },
@@ -415,5 +387,5 @@ export function generateClusters(traits: Record<string, number>): string[] {
   if (traits.intensity > 0.6 && traits.strategy > 0.6) clusters.push("Tactical Gamer");
   if (traits.adventure > 0.6 && traits.social > 0.6) clusters.push("Explorer");
 
-  return [...new Set(clusters)].slice(0, 5);
+  return Array.from(new Set(clusters)).slice(0, 5);
 }

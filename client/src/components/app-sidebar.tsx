@@ -34,7 +34,7 @@ export function AppSidebar() {
           <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center shrink-0">
             <Sparkles className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="font-semibold text-base tracking-tight">PersonaGraph</span>
+          <span className="font-semibold text-base tracking-tight">Persona</span>
         </div>
       </SidebarHeader>
       <SidebarContent>

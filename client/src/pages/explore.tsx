@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MatchPill, MatchGlow } from "@/components/match-pill";
@@ -14,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { Hobby } from "@shared/schema";
+import { getHobbyImage } from "@/lib/hobby-images";
 
 interface HobbyWithMatch extends Hobby {
   matchScore: number;
@@ -50,7 +50,7 @@ export default function ExplorePage() {
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-44 rounded-md" />
+            <Skeleton key={i} className="h-56 rounded-md" />
           ))}
         </div>
       </div>
@@ -79,106 +79,133 @@ export default function ExplorePage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {hobbies.map((hobby) => {
             const color = getScoreColor(hobby.matchScore);
+            const image = getHobbyImage(hobby.title);
             return (
               <MatchGlow key={hobby.id} score={hobby.matchScore}>
-                <Card className="p-4 space-y-3 overflow-visible h-full flex flex-col">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <h3
-                        className={cn("font-bold", COLOR_TEXT[color])}
-                        data-testid={`text-hobby-title-${hobby.id}`}
-                      >
-                        {hobby.title}
-                      </h3>
-                      {hobby.tags && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {hobby.tags.slice(0, 4).map((tag) => (
-                            <span
-                              key={tag}
-                              className={cn(
-                                "text-[10px] px-1.5 py-0.5 rounded border font-medium",
-                                COLOR_BG_BADGE[color]
-                              )}
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <MatchPill score={hobby.matchScore} size="sm" />
-                  </div>
-
-                  {hobby.description && (
-                    <p className="text-xs text-muted-foreground leading-relaxed flex-1">
-                      {hobby.description}
-                    </p>
-                  )}
-
-                  <div className="flex items-start gap-1.5 text-xs">
-                    <Sparkles className={cn("h-3 w-3 mt-0.5 shrink-0",
-                      color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-rose-400"
-                    )} />
-                    <span className="text-muted-foreground">{hobby.whyItFits}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2 pt-1">
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users className="h-3 w-3" />
-                      <span>{hobby.usersDoingIt} exploring</span>
-                    </div>
-
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          data-testid={`button-hobby-detail-${hobby.id}`}
+                <Card className="overflow-visible h-full flex flex-col">
+                  {image && (
+                    <div className="relative h-36 overflow-hidden rounded-t-md">
+                      <img
+                        src={image}
+                        alt={hobby.title}
+                        className="w-full h-full object-cover"
+                        data-testid={`img-hobby-${hobby.id}`}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                      <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between gap-2">
+                        <h3
+                          className="font-bold text-white text-sm drop-shadow-sm"
+                          data-testid={`text-hobby-title-${hobby.id}`}
                         >
-                          Learn More
-                          <ArrowRight className="h-3 w-3 ml-1" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-lg">
-                        <DialogHeader>
-                          <DialogTitle className="flex items-center gap-2">
-                            <span className={COLOR_TEXT[color]}>{hobby.title}</span>
-                            <MatchPill score={hobby.matchScore} size="sm" />
-                          </DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 pt-2">
-                          <p className="text-sm text-muted-foreground leading-relaxed">
-                            {hobby.description}
-                          </p>
+                          {hobby.title}
+                        </h3>
+                        <MatchPill score={hobby.matchScore} size="sm" />
+                      </div>
+                    </div>
+                  )}
+                  <div className="p-4 space-y-3 flex-1 flex flex-col">
+                    {!image && (
+                      <div className="flex items-start justify-between gap-2">
+                        <h3
+                          className={cn("font-bold", COLOR_TEXT[color])}
+                          data-testid={`text-hobby-title-${hobby.id}`}
+                        >
+                          {hobby.title}
+                        </h3>
+                        <MatchPill score={hobby.matchScore} size="sm" />
+                      </div>
+                    )}
 
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-semibold flex items-center gap-1.5">
-                              <Sparkles className={cn("h-3.5 w-3.5",
-                                color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-rose-400"
-                              )} />
-                              Why it fits you
-                            </h4>
-                            <p className="text-sm text-muted-foreground">{hobby.whyItFits}</p>
-                          </div>
+                    {hobby.tags && (
+                      <div className="flex flex-wrap gap-1">
+                        {hobby.tags.slice(0, 4).map((tag) => (
+                          <span
+                            key={tag}
+                            className={cn(
+                              "text-[10px] px-1.5 py-0.5 rounded border font-medium",
+                              COLOR_BG_BADGE[color]
+                            )}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                          {hobby.tags && (
-                            <div className="flex flex-wrap gap-1.5">
-                              {hobby.tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className={cn(
-                                    "text-xs px-2 py-0.5 rounded border font-medium",
-                                    COLOR_BG_BADGE[color]
-                                  )}
-                                >
-                                  {tag}
-                                </span>
-                              ))}
+                    {hobby.description && (
+                      <p className="text-xs text-muted-foreground leading-relaxed flex-1 line-clamp-2">
+                        {hobby.description}
+                      </p>
+                    )}
+
+                    <div className="flex items-start gap-1.5 text-xs">
+                      <Sparkles className={cn("h-3 w-3 mt-0.5 shrink-0",
+                        color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-rose-400"
+                      )} />
+                      <span className="text-muted-foreground">{hobby.whyItFits}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Users className="h-3 w-3" />
+                        <span>{hobby.usersDoingIt} exploring</span>
+                      </div>
+
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            data-testid={`button-hobby-detail-${hobby.id}`}
+                          >
+                            Learn More
+                            <ArrowRight className="h-3 w-3 ml-1" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                              <span className={COLOR_TEXT[color]}>{hobby.title}</span>
+                              <MatchPill score={hobby.matchScore} size="sm" />
+                            </DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4 pt-2">
+                            {image && (
+                              <div className="rounded-md overflow-hidden h-48">
+                                <img src={image} alt={hobby.title} className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                              {hobby.description}
+                            </p>
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                                <Sparkles className={cn("h-3.5 w-3.5",
+                                  color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-rose-400"
+                                )} />
+                                Why it fits you
+                              </h4>
+                              <p className="text-sm text-muted-foreground">{hobby.whyItFits}</p>
                             </div>
-                          )}
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+                            {hobby.tags && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {hobby.tags.map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      "text-xs px-2 py-0.5 rounded border font-medium",
+                                      COLOR_BG_BADGE[color]
+                                    )}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                   </div>
                 </Card>
               </MatchGlow>

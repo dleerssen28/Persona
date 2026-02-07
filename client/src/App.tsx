@@ -6,13 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/hooks/use-auth";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
+import { BottomNav } from "@/components/bottom-nav";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TasteProfile } from "@shared/schema";
 import { useState, useEffect, useRef } from "react";
+import { Sparkles } from "lucide-react";
 
 import LandingPage from "@/pages/landing";
+import OnboardingPage from "@/pages/onboarding";
 import ProfilePage from "@/pages/profile";
 import RecommendationsPage from "@/pages/recommendations";
 import SocialPage from "@/pages/social";
@@ -64,26 +65,22 @@ function AuthenticatedApp() {
     );
   }
 
-  const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
-  };
-
   return (
-    <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-4 px-4 py-2 border-b border-border/50 h-14 shrink-0 sticky top-0 z-40 bg-background/80 backdrop-blur-xl">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
-          </header>
-          <main className="flex-1 overflow-y-auto">
-            <Router />
-          </main>
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="flex items-center justify-between gap-4 px-4 py-2 border-b border-border/50 h-14 shrink-0 sticky top-0 z-40 bg-background/80 backdrop-blur-xl">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center">
+            <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
+          </div>
+          <span className="font-semibold text-base tracking-tight">Persona</span>
         </div>
-      </div>
-    </SidebarProvider>
+        <ThemeToggle />
+      </header>
+      <main className="flex-1 overflow-y-auto pb-20">
+        <Router />
+      </main>
+      <BottomNav />
+    </div>
   );
 }
 
