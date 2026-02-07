@@ -10,10 +10,9 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TasteProfile } from "@shared/schema";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 import LandingPage from "@/pages/landing";
-import OnboardingPage from "@/pages/onboarding";
 import ProfilePage from "@/pages/profile";
 import RecommendationsPage from "@/pages/recommendations";
 import SocialPage from "@/pages/social";
@@ -36,21 +35,33 @@ function AuthenticatedApp() {
   const { data: profile, isLoading: profileLoading } = useQuery<TasteProfile | null>({
     queryKey: ["/api/taste-profile"],
   });
-  const [onboardingDone, setOnboardingDone] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(false);
+  const bootstrapAttempted = useRef(false);
 
-  if (profileLoading) {
+  useEffect(() => {
+    if (!profileLoading && !profile?.onboardingComplete && !bootstrapAttempted.current) {
+      bootstrapAttempted.current = true;
+      setBootstrapping(true);
+      fetch("/api/demo/bootstrap", { method: "POST", credentials: "include" })
+        .then((r) => r.json())
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/taste-profile"] });
+          setBootstrapping(false);
+        })
+        .catch(() => setBootstrapping(false));
+    }
+  }, [profileLoading, profile]);
+
+  if (profileLoading || bootstrapping) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="space-y-4 text-center">
           <Skeleton className="h-12 w-12 mx-auto rounded-md" />
           <Skeleton className="h-4 w-32 mx-auto" />
+          <p className="text-sm text-muted-foreground">Building your Taste DNA...</p>
         </div>
       </div>
     );
-  }
-
-  if (!profile?.onboardingComplete && !onboardingDone) {
-    return <OnboardingPage onComplete={() => setOnboardingDone(true)} />;
   }
 
   const style = {

@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TRAIT_AXES, type TasteProfile } from "@shared/schema";
 import { Sparkles, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const TRAIT_LABELS: Record<string, string> = {
   novelty: "Novelty Seeker",
@@ -18,6 +19,12 @@ const TRAIT_LABELS: Record<string, string> = {
   nostalgia: "Nostalgia Pull",
   adventure: "Adventure Drive",
 };
+
+function getTraitColor(val: number) {
+  if (val >= 0.75) return { bar: "bg-emerald-500", text: "text-emerald-400", label: "Strong" };
+  if (val >= 0.5) return { bar: "bg-amber-500", text: "text-amber-400", label: "Moderate" };
+  return { bar: "bg-rose-500/70", text: "text-rose-400", label: "Low" };
+}
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -60,7 +67,7 @@ export default function ProfilePage() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto">
       <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-        <Avatar className="h-20 w-20 border-2 border-primary/20">
+        <Avatar className="h-20 w-20 ring-2 ring-emerald-500/40">
           <AvatarImage src={user?.profileImageUrl ?? undefined} />
           <AvatarFallback className="text-xl font-bold bg-primary/10 text-primary">
             {(user?.firstName?.[0] ?? "?").toUpperCase()}
@@ -95,19 +102,20 @@ export default function ProfilePage() {
           <div className="flex-1 space-y-3 w-full">
             {TRAIT_AXES.map((axis) => {
               const val = traits[axis] ?? 0.5;
+              const color = getTraitColor(val);
               return (
                 <div key={axis} className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">
                       {TRAIT_LABELS[axis]}
                     </span>
-                    <span className="text-xs font-semibold tabular-nums">
+                    <span className={cn("text-xs font-semibold tabular-nums", color.text)}>
                       {Math.round(val * 100)}%
                     </span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-md overflow-hidden">
                     <div
-                      className="h-full bg-primary rounded-md transition-all duration-700 ease-out"
+                      className={cn("h-full rounded-md transition-all duration-700 ease-out", color.bar)}
                       style={{ width: `${val * 100}%` }}
                     />
                   </div>
@@ -124,20 +132,23 @@ export default function ProfilePage() {
           <h2 className="font-semibold">Top Traits</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {topTraits.map(([key, val], idx) => (
-            <div
-              key={key}
-              className="p-4 rounded-md bg-muted/50 space-y-1"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-primary tabular-nums">#{idx + 1}</span>
-                <span className="text-sm font-medium">{TRAIT_LABELS[key]}</span>
+          {topTraits.map(([key, val], idx) => {
+            const color = getTraitColor(val);
+            return (
+              <div
+                key={key}
+                className="p-4 rounded-md bg-muted/50 space-y-1"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={cn("text-xs font-bold tabular-nums", color.text)}>#{idx + 1}</span>
+                  <span className="text-sm font-medium">{TRAIT_LABELS[key]}</span>
+                </div>
+                <div className={cn("text-2xl font-bold tabular-nums", color.text)}>
+                  {Math.round(val * 100)}%
+                </div>
               </div>
-              <div className="text-2xl font-bold tabular-nums text-primary">
-                {Math.round(val * 100)}%
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
     </div>

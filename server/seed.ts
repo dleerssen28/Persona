@@ -1,33 +1,55 @@
 import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { tasteProfiles } from "@shared/schema";
 import type { InsertItem, InsertHobby, InsertTasteProfile } from "@shared/schema";
 import type { UpsertUser } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 
 const SEED_USERS: { user: UpsertUser; profile: InsertTasteProfile }[] = [
   {
-    user: { id: "seed-user-1", email: "alex.chen@example.com", firstName: "Alex", lastName: "Chen", profileImageUrl: null },
-    profile: { userId: "seed-user-1", traitNovelty: 0.85, traitIntensity: 0.7, traitCozy: 0.25, traitStrategy: 0.8, traitSocial: 0.5, traitCreativity: 0.9, traitNostalgia: 0.3, traitAdventure: 0.85, topClusters: ["Innovator", "Creative Thinker", "Adventurer"], onboardingComplete: true },
+    user: { id: "seed-colin", email: "colin.weis@personagraph.io", firstName: "Colin", lastName: "Weis", profileImageUrl: null },
+    profile: {
+      userId: "seed-colin",
+      traitNovelty: 0.45, traitIntensity: 0.85, traitCozy: 0.3,
+      traitStrategy: 0.9, traitSocial: 0.55, traitCreativity: 0.4,
+      traitNostalgia: 0.25, traitAdventure: 0.75,
+      topClusters: ["Strategic Mind", "Thrill Seeker", "Tactical Gamer"],
+      onboardingComplete: true,
+    },
   },
   {
-    user: { id: "seed-user-2", email: "maya.patel@example.com", firstName: "Maya", lastName: "Patel", profileImageUrl: null },
-    profile: { userId: "seed-user-2", traitNovelty: 0.6, traitIntensity: 0.3, traitCozy: 0.85, traitStrategy: 0.4, traitSocial: 0.7, traitCreativity: 0.75, traitNostalgia: 0.8, traitAdventure: 0.35, topClusters: ["Comfort Connoisseur", "Nostalgia Lover", "Social Butterfly"], onboardingComplete: true },
+    user: { id: "seed-andy", email: "andy.chen@personagraph.io", firstName: "Andy", lastName: "Chen", profileImageUrl: null },
+    profile: {
+      userId: "seed-andy",
+      traitNovelty: 0.8, traitIntensity: 0.5, traitCozy: 0.55,
+      traitStrategy: 0.65, traitSocial: 0.7, traitCreativity: 0.85,
+      traitNostalgia: 0.45, traitAdventure: 0.7,
+      topClusters: ["Creative Thinker", "Innovator", "Explorer"],
+      onboardingComplete: true,
+    },
   },
   {
-    user: { id: "seed-user-3", email: "jordan.lee@example.com", firstName: "Jordan", lastName: "Lee", profileImageUrl: null },
-    profile: { userId: "seed-user-3", traitNovelty: 0.5, traitIntensity: 0.9, traitCozy: 0.15, traitStrategy: 0.85, traitSocial: 0.65, traitCreativity: 0.35, traitNostalgia: 0.2, traitAdventure: 0.7, topClusters: ["Thrill Seeker", "Strategic Mind", "Tactical Gamer"], onboardingComplete: true },
-  },
-  {
-    user: { id: "seed-user-4", email: "sam.rivera@example.com", firstName: "Sam", lastName: "Rivera", profileImageUrl: null },
-    profile: { userId: "seed-user-4", traitNovelty: 0.75, traitIntensity: 0.45, traitCozy: 0.6, traitStrategy: 0.55, traitSocial: 0.85, traitCreativity: 0.8, traitNostalgia: 0.5, traitAdventure: 0.65, topClusters: ["Social Butterfly", "Creative Thinker", "Explorer"], onboardingComplete: true },
-  },
-  {
-    user: { id: "seed-user-5", email: "taylor.kim@example.com", firstName: "Taylor", lastName: "Kim", profileImageUrl: null },
-    profile: { userId: "seed-user-5", traitNovelty: 0.4, traitIntensity: 0.2, traitCozy: 0.9, traitStrategy: 0.6, traitSocial: 0.3, traitCreativity: 0.65, traitNostalgia: 0.85, traitAdventure: 0.2, topClusters: ["Comfort Classic", "Nostalgia Lover", "Creative Thinker"], onboardingComplete: true },
+    user: { id: "seed-devon", email: "devon.leerssen@personagraph.io", firstName: "Devon", lastName: "Leerssen", profileImageUrl: null },
+    profile: {
+      userId: "seed-devon",
+      traitNovelty: 0.35, traitIntensity: 0.3, traitCozy: 0.85,
+      traitStrategy: 0.4, traitSocial: 0.8, traitCreativity: 0.6,
+      traitNostalgia: 0.75, traitAdventure: 0.3,
+      topClusters: ["Comfort Connoisseur", "Social Butterfly", "Nostalgia Lover"],
+      onboardingComplete: true,
+    },
   },
 ];
+
+const GARV_PROFILE: Omit<InsertTasteProfile, "userId"> = {
+  traitNovelty: 0.75, traitIntensity: 0.65, traitCozy: 0.4,
+  traitStrategy: 0.7, traitSocial: 0.6, traitCreativity: 0.8,
+  traitNostalgia: 0.35, traitAdventure: 0.85,
+  topClusters: ["Adventurer", "Creative Thinker", "Innovator", "Strategic Mind"],
+  onboardingComplete: true,
+};
+
+export { GARV_PROFILE };
 
 const SEED_ITEMS: InsertItem[] = [
   { domain: "movies", title: "Interstellar", tags: ["sci-fi", "space", "emotional"], description: "A team of explorers travel through a wormhole in space to ensure humanity's survival.", popularity: 1240, traitNovelty: 0.85, traitIntensity: 0.7, traitCozy: 0.3, traitStrategy: 0.6, traitSocial: 0.4, traitCreativity: 0.8, traitNostalgia: 0.4, traitAdventure: 0.9 },
@@ -66,18 +88,22 @@ const SEED_ITEMS: InsertItem[] = [
 ];
 
 const SEED_HOBBIES: InsertHobby[] = [
-  { title: "Astrophotography", tags: ["photography", "space", "technical", "creative"], description: "Capture the night sky, galaxies, and celestial events through long-exposure photography. Combines technical camera skills with patience and wonder.", starterLinks: [], traitNovelty: 0.85, traitIntensity: 0.4, traitCozy: 0.3, traitStrategy: 0.7, traitSocial: 0.2, traitCreativity: 0.9, traitNostalgia: 0.5, traitAdventure: 0.7 },
-  { title: "Urban Sketching", tags: ["art", "travel", "outdoor", "creative"], description: "Sketch the world around you in real-time, from cityscapes to cafes. A meditative way to observe and document daily life.", starterLinks: [], traitNovelty: 0.6, traitIntensity: 0.2, traitCozy: 0.6, traitStrategy: 0.3, traitSocial: 0.4, traitCreativity: 0.95, traitNostalgia: 0.6, traitAdventure: 0.5 },
+  { title: "Go-Karting", tags: ["racing", "adrenaline", "competitive", "outdoor"], description: "Race around tracks at high speed in lightweight karts. Pure adrenaline, sharp turns, and the thrill of overtaking your rivals.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.9, traitCozy: 0.05, traitStrategy: 0.6, traitSocial: 0.7, traitCreativity: 0.2, traitNostalgia: 0.3, traitAdventure: 0.85 },
+  { title: "Surfing", tags: ["ocean", "adventure", "fitness", "nature"], description: "Ride ocean waves on a surfboard. A blend of athleticism, patience, and reading the sea that connects you deeply with nature.", starterLinks: [], traitNovelty: 0.6, traitIntensity: 0.75, traitCozy: 0.15, traitStrategy: 0.4, traitSocial: 0.5, traitCreativity: 0.4, traitNostalgia: 0.2, traitAdventure: 0.95 },
   { title: "Rock Climbing", tags: ["fitness", "adventure", "outdoor", "challenging"], description: "Scale natural and artificial rock faces using strength, strategy, and problem-solving. Both indoor bouldering and outdoor routes.", starterLinks: [], traitNovelty: 0.6, traitIntensity: 0.85, traitCozy: 0.1, traitStrategy: 0.7, traitSocial: 0.5, traitCreativity: 0.3, traitNostalgia: 0.1, traitAdventure: 0.95 },
-  { title: "Fermentation & Brewing", tags: ["cooking", "science", "patience", "craft"], description: "Make your own kombucha, kimchi, sourdough, or craft beer. Part science, part art, fully rewarding.", starterLinks: [], traitNovelty: 0.7, traitIntensity: 0.3, traitCozy: 0.7, traitStrategy: 0.6, traitSocial: 0.4, traitCreativity: 0.7, traitNostalgia: 0.5, traitAdventure: 0.4 },
-  { title: "Board Game Design", tags: ["strategy", "creative", "social", "design"], description: "Create your own tabletop games from concept to prototype. Combines strategic thinking with creative design.", starterLinks: [], traitNovelty: 0.7, traitIntensity: 0.3, traitCozy: 0.5, traitStrategy: 0.9, traitSocial: 0.6, traitCreativity: 0.9, traitNostalgia: 0.4, traitAdventure: 0.3 },
+  { title: "Skateboarding", tags: ["street", "creative", "fitness", "culture"], description: "Express yourself on four wheels with tricks, street skating, and park sessions. Part sport, part art form, entirely a lifestyle.", starterLinks: [], traitNovelty: 0.6, traitIntensity: 0.7, traitCozy: 0.1, traitStrategy: 0.4, traitSocial: 0.6, traitCreativity: 0.8, traitNostalgia: 0.4, traitAdventure: 0.8 },
+  { title: "Drone Photography", tags: ["tech", "photography", "aerial", "creative"], description: "Capture stunning aerial perspectives with a drone. Combines tech skills with artistic vision for breathtaking shots.", starterLinks: [], traitNovelty: 0.8, traitIntensity: 0.4, traitCozy: 0.2, traitStrategy: 0.5, traitSocial: 0.3, traitCreativity: 0.8, traitNostalgia: 0.2, traitAdventure: 0.7 },
+  { title: "Scuba Diving", tags: ["underwater", "adventure", "nature", "exploration"], description: "Explore underwater worlds, coral reefs, and marine life. A mesmerizing way to see a side of Earth most never experience.", starterLinks: [], traitNovelty: 0.8, traitIntensity: 0.6, traitCozy: 0.15, traitStrategy: 0.5, traitSocial: 0.4, traitCreativity: 0.5, traitNostalgia: 0.2, traitAdventure: 0.95 },
+  { title: "Cooking Competitions", tags: ["cooking", "competitive", "creative", "social"], description: "Challenge yourself with timed cook-offs, mystery basket challenges, and recipe battles. Turn the kitchen into a competitive arena.", starterLinks: [], traitNovelty: 0.65, traitIntensity: 0.7, traitCozy: 0.4, traitStrategy: 0.6, traitSocial: 0.8, traitCreativity: 0.85, traitNostalgia: 0.3, traitAdventure: 0.5 },
   { title: "Trail Running", tags: ["fitness", "nature", "outdoor", "endurance"], description: "Run through natural trails, forests, and mountains. More adventurous than road running with ever-changing terrain.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.8, traitCozy: 0.1, traitStrategy: 0.3, traitSocial: 0.3, traitCreativity: 0.2, traitNostalgia: 0.2, traitAdventure: 0.9 },
+  { title: "Board Game Nights", tags: ["strategy", "social", "indoor", "fun"], description: "Gather friends for Catan, Codenames, or Ticket to Ride. Strategy, bluffing, and laughter packed into every session.", starterLinks: [], traitNovelty: 0.4, traitIntensity: 0.3, traitCozy: 0.7, traitStrategy: 0.8, traitSocial: 0.9, traitCreativity: 0.5, traitNostalgia: 0.6, traitAdventure: 0.2 },
+  { title: "Mountain Biking", tags: ["cycling", "adventure", "outdoor", "adrenaline"], description: "Tear down mountain trails on a bike built for rough terrain. Combines fitness, risk, and the beauty of nature at speed.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.85, traitCozy: 0.05, traitStrategy: 0.5, traitSocial: 0.4, traitCreativity: 0.2, traitNostalgia: 0.15, traitAdventure: 0.95 },
+  { title: "Photography Walks", tags: ["photography", "outdoor", "creative", "chill"], description: "Wander through cities, parks, or landscapes with your camera, finding beauty in everyday moments and hidden details.", starterLinks: [], traitNovelty: 0.6, traitIntensity: 0.2, traitCozy: 0.6, traitStrategy: 0.3, traitSocial: 0.3, traitCreativity: 0.9, traitNostalgia: 0.5, traitAdventure: 0.5 },
+  { title: "Podcasting", tags: ["creative", "social", "storytelling", "tech"], description: "Share your voice and stories with the world. Interview experts, tell narratives, or discuss ideas that matter to you.", starterLinks: [], traitNovelty: 0.6, traitIntensity: 0.3, traitCozy: 0.4, traitStrategy: 0.4, traitSocial: 0.9, traitCreativity: 0.8, traitNostalgia: 0.3, traitAdventure: 0.4 },
+  { title: "Snowboarding", tags: ["winter", "adventure", "adrenaline", "sport"], description: "Carve through powder on mountain slopes. A perfect mix of speed, style, and stunning alpine scenery.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.85, traitCozy: 0.05, traitStrategy: 0.4, traitSocial: 0.5, traitCreativity: 0.4, traitNostalgia: 0.2, traitAdventure: 0.9 },
   { title: "Pottery & Ceramics", tags: ["art", "craft", "cozy", "tactile"], description: "Shape clay into functional art on a wheel or by hand. Deeply meditative and satisfying to create something tangible.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.2, traitCozy: 0.8, traitStrategy: 0.3, traitSocial: 0.3, traitCreativity: 0.9, traitNostalgia: 0.6, traitAdventure: 0.2 },
-  { title: "Competitive Chess", tags: ["strategy", "competitive", "mental", "classic"], description: "Master the game of kings through study, practice, and tournament play. Endless depth in a simple ruleset.", starterLinks: [], traitNovelty: 0.3, traitIntensity: 0.5, traitCozy: 0.4, traitStrategy: 0.95, traitSocial: 0.5, traitCreativity: 0.4, traitNostalgia: 0.6, traitAdventure: 0.2 },
-  { title: "Drone Photography", tags: ["tech", "photography", "aerial", "creative"], description: "Capture stunning aerial perspectives with a drone. Combines tech skills with artistic vision.", starterLinks: [], traitNovelty: 0.8, traitIntensity: 0.4, traitCozy: 0.2, traitStrategy: 0.5, traitSocial: 0.3, traitCreativity: 0.8, traitNostalgia: 0.2, traitAdventure: 0.7 },
-  { title: "Community Gardening", tags: ["nature", "social", "cozy", "sustainable"], description: "Grow food and flowers in a shared community space. Connect with neighbors while nurturing the earth.", starterLinks: [], traitNovelty: 0.3, traitIntensity: 0.1, traitCozy: 0.9, traitStrategy: 0.3, traitSocial: 0.8, traitCreativity: 0.5, traitNostalgia: 0.7, traitAdventure: 0.2 },
-  { title: "Podcasting", tags: ["creative", "social", "storytelling", "tech"], description: "Share your voice and stories with the world. Interview experts, tell narratives, or discuss ideas.", starterLinks: [], traitNovelty: 0.6, traitIntensity: 0.3, traitCozy: 0.4, traitStrategy: 0.4, traitSocial: 0.9, traitCreativity: 0.8, traitNostalgia: 0.3, traitAdventure: 0.4 },
-  { title: "Speedcubing", tags: ["puzzle", "competitive", "dexterity", "logical"], description: "Solve Rubik's cubes and other twisty puzzles as fast as possible. A blend of algorithms and finger speed.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.6, traitCozy: 0.3, traitStrategy: 0.8, traitSocial: 0.4, traitCreativity: 0.3, traitNostalgia: 0.4, traitAdventure: 0.3 },
+  { title: "Escape Rooms", tags: ["puzzle", "social", "teamwork", "adventure"], description: "Solve puzzles under pressure with friends to 'escape' themed rooms. Tests logic, communication, and creative thinking.", starterLinks: [], traitNovelty: 0.7, traitIntensity: 0.6, traitCozy: 0.3, traitStrategy: 0.85, traitSocial: 0.85, traitCreativity: 0.7, traitNostalgia: 0.2, traitAdventure: 0.7 },
+  { title: "Camping & Backpacking", tags: ["outdoor", "nature", "adventure", "survival"], description: "Disconnect from the world and reconnect with nature. Camp under the stars, cook over a fire, and explore the wilderness.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.5, traitCozy: 0.4, traitStrategy: 0.4, traitSocial: 0.5, traitCreativity: 0.3, traitNostalgia: 0.5, traitAdventure: 0.9 },
 ];
 
 export async function seedDatabase() {
@@ -99,9 +125,9 @@ export async function seedDatabase() {
     console.log(`Seeded ${SEED_HOBBIES.length} hobbies.`);
   }
 
-  const [seedUserCheck] = await db.select().from(users).where(eq(users.id, "seed-user-1"));
+  const [seedUserCheck] = await db.select().from(users).where(eq(users.id, "seed-colin"));
   if (!seedUserCheck) {
-    console.log("Seeding sample users and profiles...");
+    console.log("Seeding hackathon team profiles...");
     for (const { user, profile } of SEED_USERS) {
       await db.insert(users).values(user);
       await storage.upsertTasteProfile(profile);

@@ -17,10 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Sparkles, User, BarChart3, Users, Compass, LogOut } from "lucide-react";
 
 const navItems = [
-  { title: "Profile", href: "/", icon: User },
-  { title: "Recommendations", href: "/recommendations", icon: BarChart3 },
-  { title: "Social", href: "/social", icon: Users },
-  { title: "Explore", href: "/explore", icon: Compass },
+  { title: "My Taste DNA", href: "/", icon: User },
+  { title: "For You", href: "/recommendations", icon: BarChart3 },
+  { title: "Find Friends", href: "/social", icon: Users },
+  { title: "Discover Hobbies", href: "/explore", icon: Compass },
 ];
 
 export function AppSidebar() {

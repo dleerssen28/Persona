@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { buildTraitsFromSelections, generateClusters, computeMatchScore, computeItemMatchScore, computeHobbyMatch, getTraitsFromProfile } from "./taste-engine";
 import { TRAIT_AXES, type Domain } from "@shared/schema";
+import { GARV_PROFILE } from "./seed";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -11,6 +12,24 @@ export async function registerRoutes(
 ): Promise<Server> {
   await setupAuth(app);
   registerAuthRoutes(app);
+
+  app.post("/api/demo/bootstrap", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const existing = await storage.getTasteProfile(userId);
+      if (existing?.onboardingComplete) {
+        return res.json(existing);
+      }
+      const profile = await storage.upsertTasteProfile({
+        userId,
+        ...GARV_PROFILE,
+      });
+      res.json(profile);
+    } catch (error) {
+      console.error("Error bootstrapping demo:", error);
+      res.status(500).json({ message: "Failed to bootstrap demo" });
+    }
+  });
 
   app.get("/api/taste-profile", isAuthenticated, async (req: any, res) => {
     try {
