@@ -1,0 +1,750 @@
+Project
+PersonaGraph (working name)
+
+One-liner: Build a “Taste DNA” for every user (across movies/music/games/food/hobbies), use it to match people, recommend content, and discover hobbies with a reels-style learning feed—fully explainable, color-coded, and identity-driven.
+
+Why this can win (rubric mapping)
+Technicality
+
+Real recommendation engine (hybrid retrieval + ranking)
+
+Vector embeddings + approximate nearest neighbor search
+
+Graph-based user similarity + clustering
+
+Video quality ranking + personalization
+
+Geo search + privacy controls + caching
+
+Ingenuity
+
+Cross-domain TasteDNA: one unified persona from multi-domain preferences (not just tags)
+
+“High match with low overlap” proof (shows you model structure of taste)
+
+Explainable matching: “why you match” sliders derived from TasteDNA
+
+Diversity (Interdisciplinary)
+
+ML / Recsys / Vector search (TasteDNA + ranking)
+
+Network science (user similarity graph, communities)
+
+HCI/Design (identity profile system + confidence color coding)
+
+Psychology / preference modeling (trait axes: novelty, intensity, cozy/competitive, etc.)
+
+Multimedia systems (reels ingestion, quality scoring)
+
+Geospatial computing + privacy (nearby matching, radius blur, safety)
+
+Applicability
+
+Solves real social friction: “find my people”
+
+Solves discovery friction: “what will I like next” + “what hobbies fit me”
+
+Creates a product users can actually keep using
+
+Looks / Pitch
+
+Visually insane: persona radar + similarity graph + color-coded cards + reels
+
+Demo in 60 seconds with “holy sh*t” moments
+
+Stack (MERN… but do AI correctly)
+Core stack
+
+Frontend: React (I strongly recommend Next.js for routing + auth + polish)
+
+Backend: Node.js + Express (REST)
+
+DB: MongoDB Atlas
+
+File storage: S3/Cloudflare R2 (videos, profile assets)
+
+Realtime: Socket.io (chat, online status, live match updates)
+
+AI stack (separate service)
+
+Do NOT try to do AI inside Node. You’ll lose time and quality.
+
+AI service: Python FastAPI
+
+Embeddings: OpenAI embeddings or open-source (SBERT)
+
+Vector search: MongoDB Atlas Vector Search (cleanest with your DB)
+(Alternative: Pinecone)
+
+This still counts as MERN-based product, but with a proper ML microservice.
+
+System Overview
+
+You are building 4 tabs and an underlying Taste Intelligence Engine.
+
+Tabs
+
+Profile (identity customization + persona visualization)
+
+Recommendations (Music / Movies / Gaming / Food bars with images)
+
+Social (nearby + online + high-match people; chat)
+
+Explore (Hobby cards + “reels” learning feed + hobby profiles)
+
+Engine
+
+TasteDNA Builder
+
+Similarity & Match Score
+
+Hybrid Recommender
+
+Hobby Discovery
+
+Reels Quality Ranker
+
+Graph + Communities
+
+Explainability layer (“why”)
+
+AI/ML: What it actually is (no fluff)
+A) TasteDNA (persona) = embedding vector
+
+Each user has:
+
+taste_vector (e.g., 1536-d float array)
+
+trait_vector (small interpretable axes, e.g., 8–12 floats)
+
+domain_vectors (optional: separate for movies/music/games/food/hobbies)
+
+Inputs to build persona
+
+You collect signals:
+
+Favorites (fast onboarding, curated lists)
+
+Likes/Skips inside your app (implicit feedback)
+
+Optional: micro “this-or-that” quiz (very strong for traits)
+
+Optional: connect APIs (Spotify, Letterboxd, Steam) if time allows
+
+How to build it (exact)
+
+For every selected item, you create an item embedding from:
+
+title + tags + short description
+
+Then you aggregate into persona:
+
+Weighted average with domain weights
+
+Loved = weight 2.0
+
+Liked = weight 1.0
+
+Skipped/Disliked = negative weight (optional but powerful)
+
+Recency weighting
+
+Newer preferences weigh more (0.8–1.2 multiplier)
+
+Domain weighting
+
+User can set importance sliders (music matters more than food, etc.)
+
+Result:
+
+taste_vector = normalize(sum(w_i * item_vector_i))
+
+That’s the persona.
+
+Minimal code logic (conceptual)
+import numpy as np
+
+def build_taste_vector(item_vectors, weights):
+    v = np.sum([w * x for x, w in zip(item_vectors, weights)], axis=0)
+    v = v / (np.linalg.norm(v) + 1e-9)
+    return v
+
+B) Match score (green/yellow/red)
+
+Compute similarity between two users:
+
+sim = cosine(u.taste_vector, v.taste_vector)
+
+Map to 0–100 using calibration:
+
+hackathon-simple: score = round(100 * sim) (if sim already ~0–1)
+
+better: piecewise scaling based on observed distribution
+
+Color:
+
+Green: 75–100
+
+Yellow: 50–74
+
+Red: <50
+
+Explainability (critical for judges)
+
+You don’t just show 87%. You show why.
+
+You generate:
+
+Top shared “themes” (cluster-level)
+
+Trait axis similarity (“both high novelty, both low slapstick humor tolerance”)
+
+How to implement quickly:
+
+Maintain trait axes derived from micro-quiz + mapping from items to traits.
+
+For each user: trait_vector in 8–12 dims.
+
+Then show:
+
+trait_diff = abs(u.trait - v.trait) → highlight closest traits.
+
+C) Recommendations (smart, multi-domain)
+
+You need two-stage recommendation (this is how real systems work):
+
+Stage 1: Candidate retrieval (vector search)
+
+For each domain tab (music/movies/games/food):
+
+query vector = user’s taste_vector OR domain_vector
+
+retrieve top K items via vector similarity from your item index
+
+Stage 2: Ranking (hybrid scoring)
+
+Final score for item =
+α * similarity_to_user + β * popularity + γ * novelty + δ * diversity_penalty
+
+similarity: vector cosine
+
+popularity: global likes / saves
+
+novelty: prefer items not too similar to what they already liked
+
+diversity: avoid 10 identical sci-fi movies in a row
+
+This is where you look advanced.
+
+“People like you liked X” logic (your pitch)
+
+Additionally, do collaborative filtering via “neighbor tastes”:
+
+find top N similar users
+
+collect their top liked items not seen by current user
+
+merge into candidates
+
+This gives that “C is pushed to you” effect.
+
+D) Hobby discovery engine
+
+Explore tab recommends new hobbies, not content they already know.
+
+Algorithm:
+
+Candidate hobbies via vector search using user taste vector
+
+Filter out hobbies already selected/liked
+
+Apply novelty band:
+
+not too close (boring)
+
+not too far (unrealistic)
+
+This is the “growth recommendation” angle.
+
+Output per hobby card:
+
+Match color (green/yellow/red)
+
+“Why it fits you”
+
+Mutual friends doing it
+
+Local availability (if you add location tags)
+
+Reels preview button
+
+E) Reels feed ranking (quality + relevance)
+
+You will have user-uploaded GoPro/short videos tagged with hobbies.
+
+Ranking score:
+score = a * relevance + b * quality + c * engagement
+
+relevance: similarity(user_taste_vector, hobby_vector or video_vector)
+
+quality: computed from video metadata + lightweight model
+
+engagement: likes, completion rate, shares, comments
+
+Quality heuristics (fast, strong):
+
+resolution >= 720p, stable fps, good brightness
+
+audio not clipped
+
+low blur (opencv measure)
+
+no extreme shakiness (optional)
+
+If you can, add a basic aesthetic score model, but heuristics are enough for hackathon.
+
+Data Model (MongoDB collections)
+users
+{
+  "_id": "ObjectId",
+  "username": "garv",
+  "displayName": "Garv",
+  "bio": "...",
+  "location": { "type": "Point", "coordinates": [-96.34, 30.61] },
+  "locationPrivacy": { "mode": "coarse", "radiusKm": 20 },
+  "profileTheme": {
+    "primaryColor": "#00FF66",
+    "accentColor": "#FFD500",
+    "stickers": ["naruto", "gojo"],
+    "danglers": ["sushi", "ramen"]
+  },
+  "taste": {
+    "tasteVector": [0.012, ...],
+    "traitVector": { "novelty": 0.7, "intensity": 0.8, "cozy": 0.2, "strategy": 0.9 },
+    "domainVectors": {
+      "movies": [...],
+      "music": [...],
+      "games": [...],
+      "food": [...],
+      "hobbies": [...]
+    }
+  },
+  "stats": { "likesGiven": 0, "reelsWatched": 0 },
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+
+items (unified or per domain)
+{
+  "_id": "ObjectId",
+  "domain": "movies|music|games|food|hobbies",
+  "title": "Interstellar",
+  "imageUrl": "...",
+  "tags": ["sci-fi", "space", "emotional"],
+  "desc": "Short summary...",
+  "embedding": [ ... ],
+  "popularity": { "likes": 1240, "saves": 402 }
+}
+
+interactions (implicit feedback)
+{
+  "userId": "...",
+  "itemId": "...",
+  "domain": "movies",
+  "action": "like|love|skip|save|view",
+  "weight": 2.0,
+  "timestamp": "..."
+}
+
+matches (cached match computations)
+{
+  "userA": "...",
+  "userB": "...",
+  "score": 87,
+  "color": "green",
+  "explanations": ["High novelty", "Similar humor", "Strategy gaming"],
+  "createdAt": "..."
+}
+
+reels
+{
+  "_id": "...",
+  "uploaderId": "...",
+  "videoUrl": "...",
+  "thumbnailUrl": "...",
+  "hobbyTags": ["surfing"],
+  "videoEmbedding": [...], 
+  "qualityScore": 0.82,
+  "engagement": { "likes": 0, "views": 0, "completionRate": 0.0 },
+  "createdAt": "..."
+}
+
+friendships / chats
+
+Standard.
+
+Indexing (performance = “technicality” points)
+
+users.location 2dsphere index
+
+items.embedding vector index (Atlas Vector Search)
+
+reels.videoEmbedding vector index
+
+interactions.userId + timestamp index
+
+Services and Responsibilities
+Node/Express API (Product brain)
+
+Auth, profiles, customization assets
+
+Upload reels metadata + pre-signed URLs
+
+Social graph, chat, nearby queries
+
+Feed endpoints that call AI service for ranking
+
+AI FastAPI service (Taste engine)
+
+Embedding creation
+
+Persona building/updating
+
+Similarity scoring
+
+Recommendation retrieval/ranking
+
+Reels ranking
+
+Node calls AI like:
+
+POST /ai/update_persona
+
+POST /ai/match_score
+
+POST /ai/recommendations
+
+POST /ai/hobby_suggestions
+
+POST /ai/reels_rank
+
+API Contract (concrete endpoints)
+Auth/User
+
+POST /auth/signup
+
+POST /auth/login
+
+GET /users/me
+
+PATCH /users/me/profileTheme
+
+PATCH /users/me/location
+
+Persona onboarding
+
+POST /persona/onboarding (favorites + quiz answers)
+
+Node stores raw inputs
+
+Node calls AI: build vectors
+
+Persist tasteVector, traitVector, domain vectors
+
+Recommendations
+
+GET /recommendations?domain=movies
+
+Node calls AI with user vector
+
+Returns list of items with image, explanation, matchColor
+
+Social
+
+GET /social/nearby?radiusKm=20&minScore=75
+
+Node geofilters candidates
+
+AI scores similarity for final shortlist
+
+POST /social/request
+
+POST /social/message (Socket.io for realtime)
+
+Explore (hobbies)
+
+GET /explore/hobbies
+
+returns hobby cards + match scores + mutual friends + reels preview ids
+
+GET /explore/hobby/:hobbyId
+
+details + users who do it + related links + top reels
+
+Reels
+
+POST /reels/upload/init (returns pre-signed URL)
+
+POST /reels/upload/complete (AI computes video embedding + quality score)
+
+GET /reels/feed?hobbyId=...
+
+UI/UX Blueprint (exact behavior)
+Global design language
+
+Color-coded match pill everywhere (red/yellow/green)
+
+A “confidence glow” around matched cards
+
+Every recommendation has a Why button (2–3 bullets)
+
+Tab 1: Profile (identity + persona)
+
+Custom theme picker: colors, gradients, fonts
+
+Sticker system:
+
+sticker library + upload
+
+“dangling foods/characters” as layered sprites
+
+Persona section:
+
+TasteDNA radar chart (traits)
+
+Top clusters (“You’re into: cinematic sci-fi, tactical games, spicy umami food…”)
+
+Posts:
+
+share reels, tag hobbies
+
+Tab 2: Recommendations
+
+Horizontal carousels:
+
+Music
+
+Movies
+
+Gaming
+
+Food
+
+Each card shows:
+
+image
+
+match color + percent (to user)
+
+“why” micro-explanation
+
+quick actions: Like/Love/Skip/Save
+
+Tab 3: Social
+
+Nearby high matches (geo-based)
+
+Global high matches (if score > threshold)
+
+Filters:
+
+only green matches
+
+online now
+
+shared hobbies
+
+Chat
+
+Icebreaker generator (optional LLM): “You both love X; ask about Y”
+
+Tab 4: Explore / Hobby Search
+
+Main view:
+
+horizontal hobby bars/cards with match % + color
+
+each hobby card:
+
+“why it fits”
+
+mutual friends doing it
+
+“Open Hobby Profile”
+
+“Watch Reels” button (right edge)
+
+Reels view:
+
+vertical scroll like TikTok
+
+filtered by:
+
+hobby tag
+
+relevance to user
+
+quality score
+
+Hobby profile page:
+
+overview + starter links
+
+top creators doing it (from your user base)
+
+“friends doing this”
+
+“nearby groups / meetups” (optional)
+
+The “hackathon-winning” proof moments you MUST show
+
+These are non-negotiable. They win judges.
+
+Proof #1: High match with low overlap
+
+Show two users with almost no shared favorites
+
+Yet match score is 90%+
+
+Explanation: same trait structure + similar clusters
+
+Proof #2: Cross-domain recommendation
+
+User likes sci-fi movies + exploration games → app recommends astrophotography hobby + specific music vibe + food category
+This makes it feel like real intelligence.
+
+Proof #3: Explainability everywhere
+
+Every match and rec has a “why”
+Judges trust it more, and it looks advanced.
+
+Proof #4: Reels quality filtering
+
+Show “Top” reels are stable, clear, engaging
+
+Mention quality score + engagement ranking
+
+How to get data fast (so it doesn’t feel fake)
+
+You need content to look real.
+
+Item sources
+
+Movies: TMDB dataset/API
+
+Music: Spotify API (or a static seed dataset)
+
+Games: IGDB or Steam tags dataset
+
+Food: a curated list + tags (“spicy”, “umami”, “sweet”, cuisines)
+
+Hobbies: curated list + tags + starter links
+
+Reels content
+
+Seed with:
+
+a few sample GoPro clips from YouTube (if allowed) OR team-created clips
+
+plus users can upload in-app
+
+Important: label any seeded videos properly.
+
+Security + Privacy (don’t skip—this is “real-world impact”)
+
+Location privacy modes:
+
+Exact (opt-in)
+
+Coarse (city-level)
+
+Radius-based blur (default)
+
+Safety controls:
+
+report/block
+
+message request gate
+
+rate limit outbound requests
+
+optional toxicity filter (simple API)
+
+This makes your social feature defensible.
+
+Build Plan (execution order that wins)
+Phase 1: Core engine + onboarding (must work perfectly)
+
+Item database + embeddings
+
+Persona onboarding UI
+
+AI builds taste vectors + traits
+
+Match scoring endpoint
+
+Phase 2: Recommendations tab
+
+Vector search retrieval
+
+Hybrid ranking
+
+Explainable “why”
+
+Phase 3: Social tab
+
+Geo query + similarity ranking
+
+Color-coded cards + chat
+
+Phase 4: Explore + Reels
+
+Hobby recommender
+
+Reels upload + ranking + feed
+
+Phase 5: Visual polish that wins
+
+persona radar chart + graph communities
+
+profile customization system (stickers/themes)
+
+slick transitions + animations
+
+Concrete AI Deliverables to list on your submission
+
+You will explicitly claim these:
+
+TasteDNA embedding model for persona creation
+
+Similarity matching using vector distance
+
+Cross-domain recommender combining collaborative filtering + content-based retrieval
+
+Explainable persona traits derived from embeddings + micro-quiz
+
+Hobby discovery novelty-band algorithm
+
+Reels ranking model blending relevance + quality + engagement
+
+Community clustering (optional but impressive): k-means/graph clustering over users
+
+That’s unmistakably AI/ML.
+
+Final note (blunt)
+
+If you build this with:
+
+real TasteDNA vectors,
+
+explainable matching,
+
+cross-domain recs,
+
+a reels feed that feels curated,
+
+and your profile page actually screams identity…
+
+…you will look like a startup demo, not a hackathon toy.
+
+If you want next: I’ll give you the exact persona math, the AI endpoints with request/response schemas, and a minimal reference implementation layout (folder structure + sample FastAPI + Node wiring) so your team can start coding immediately.
