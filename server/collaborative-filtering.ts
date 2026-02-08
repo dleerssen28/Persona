@@ -1,7 +1,7 @@
 import { pool } from "./db";
 import { computeCosineSimilarity, isValidEmbedding } from "./embeddings";
 
-const EMBEDDING_DIM = 1536;
+const EMBEDDING_DIM = 384;
 
 interface CFCandidate {
   itemId: string;

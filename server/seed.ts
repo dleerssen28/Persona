@@ -261,11 +261,6 @@ const SEED_EVENTS: InsertEvent[] = [
 ];
 
 async function seedEmbeddings() {
-  if (!process.env.OPENAI_API_KEY) {
-    console.log("Skipping embeddings: OPENAI_API_KEY not set");
-    return;
-  }
-
   const missingItemEmbeddings = await pool.query(
     "SELECT id, title, tags, description FROM items WHERE embedding IS NULL"
   );

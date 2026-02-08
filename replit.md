@@ -7,7 +7,7 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
 - **Backend**: Node.js + Express
 - **Database**: PostgreSQL with Drizzle ORM + pgvector extension
-- **AI/ML**: OpenAI text-embedding-3-small (1536-dim vectors), pgvector HNSW indexes
+- **AI/ML**: Local all-MiniLM-L6-v2 via @xenova/transformers (384-dim vectors), pgvector indexes, no external API dependencies
 - **Auth**: Replit Auth (OpenID Connect)
 - **Routing**: wouter (frontend), Express (backend)
 
@@ -51,7 +51,7 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 
 ### Hybrid AI/ML Engine (Embeddings-First)
 - **Embeddings-First Architecture**: ML drives ranking; traits only explain. Fallback to traits only if embeddings missing.
-- **Vector Similarity (55%)**: Neural embeddings via OpenAI text-embedding-3-small (with deterministic hash-based fallback when API unavailable), cosine similarity scoring
+- **Vector Similarity (55%)**: Local neural embeddings via @xenova/transformers all-MiniLM-L6-v2 (384-dim, 100% reliable, no external API), cosine similarity scoring
 - **Collaborative Filtering (25%)**: Embedding-based neighbor discovery (top 20 users by tasteEmbedding cosine similarity), weighted action aggregation (love 2.0, save 1.5, like 1.0, view 0.3, skip -0.5), communityPicks with explanations
 - **Trait Explainability (20%)**: 8-axis trait algebra for human-readable "why" explanations only
 - **Scoring Methods**: `embedding` (vector-only), `hybrid` (vector+CF+traits), `trait_fallback` (no embeddings)
@@ -83,18 +83,18 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 ### Database Tables
 - `users` - Auth users (managed by Replit Auth) + locationLat/locationLng/privacyRadiusKm
 - `sessions` - Session storage (managed by Replit Auth)
-- `taste_profiles` - User taste DNA with 8 trait axes + clusters + embedding vector(1536)
-- `items` - Content items across 5 domains with trait values + embedding vector(1536)
+- `taste_profiles` - User taste DNA with 8 trait axes + clusters + embedding vector(384)
+- `items` - Content items across 5 domains with trait values + embedding vector(384)
 - `interactions` - User interactions with items (like/love/skip/save)
 - `matches` - Cached match computations
-- `hobbies` - Hobby entries with trait values + embedding vector(1536)
-- `events` - Events with trait values + embedding vector(1536) + locationLat/locationLng
+- `hobbies` - Hobby entries with trait values + embedding vector(384)
+- `events` - Events with trait values + embedding vector(384) + locationLat/locationLng
 - `event_rsvps` - RSVP records linking users to events
 
 ### Key Backend Files
 - `server/hybrid-engine.ts` - Embeddings-first scoring: vector sim + CF + traits (explainability only)
 - `server/collaborative-filtering.ts` - Embedding-based neighbor CF with weighted action aggregation
-- `server/embeddings.ts` - OpenAI embeddings, recomputeTasteEmbedding (synchronous), checkEmbeddingHealth
+- `server/embeddings.ts` - Local @xenova/transformers embeddings (all-MiniLM-L6-v2, 384-dim), recomputeTasteEmbedding (synchronous), checkEmbeddingHealth
 - `server/taste-engine.ts` - 8-axis trait algebra (explainability layer only)
 - `server/seed.ts` - Database seeding with embedding pipeline + startup health warning
 - `server/routes.ts` - Express API routes including debug/health and admin/backfill endpoints
