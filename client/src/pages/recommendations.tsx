@@ -2,53 +2,64 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MatchPill } from "@/components/match-pill";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { type Item, type Hobby } from "@shared/schema";
+import { type Item } from "@shared/schema";
 import {
-  Film, Music, Gamepad2, UtensilsCrossed, Compass,
-  Bookmark, SkipForward, ThumbsUp, Sparkles, ChevronDown, ChevronUp
+  GraduationCap, Briefcase, Users, Trophy, Heart,
+  Bookmark, SkipForward, ThumbsUp, Sparkles, ChevronDown,
+  MapPin, Clock, Calendar, DollarSign, ExternalLink,
+  ArrowUpDown, SlidersHorizontal
 } from "lucide-react";
+import { SiInstagram } from "react-icons/si";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { getItemImage } from "@/lib/item-images";
-import { getHobbyImage } from "@/lib/hobby-images";
 
-import domainMovies from "@/assets/images/domain-movies.jpg";
-import domainMusic from "@/assets/images/domain-music.jpg";
-import domainGames from "@/assets/images/domain-games.jpg";
-import domainFood from "@/assets/images/domain-food.jpg";
-import domainHobbies from "@/assets/images/domain-hobbies.jpg";
+type CampusDomain = "academic" | "professional" | "social" | "sports" | "volunteering";
 
-type ContentDomain = "movies" | "music" | "games" | "food" | "hobbies";
-
-const DOMAINS: { key: ContentDomain; label: string; icon: typeof Film }[] = [
-  { key: "movies", label: "Movies", icon: Film },
-  { key: "music", label: "Music", icon: Music },
-  { key: "games", label: "Games", icon: Gamepad2 },
-  { key: "food", label: "Food", icon: UtensilsCrossed },
-  { key: "hobbies", label: "Hobbies", icon: Compass },
+const DOMAINS: { key: CampusDomain; label: string; icon: typeof GraduationCap }[] = [
+  { key: "academic", label: "Academic", icon: GraduationCap },
+  { key: "professional", label: "Professional", icon: Briefcase },
+  { key: "social", label: "Social", icon: Users },
+  { key: "sports", label: "Sports", icon: Trophy },
+  { key: "volunteering", label: "Volunteering", icon: Heart },
 ];
 
-const DOMAIN_FALLBACK: Record<string, string> = {
-  movies: domainMovies,
-  music: domainMusic,
-  games: domainGames,
-  food: domainFood,
-  hobbies: domainHobbies,
+const DOMAIN_GRADIENTS: Record<CampusDomain, string> = {
+  academic: "from-blue-900 via-indigo-900 to-slate-900",
+  professional: "from-slate-800 via-zinc-900 to-neutral-900",
+  social: "from-purple-900 via-fuchsia-900 to-pink-900",
+  sports: "from-green-900 via-emerald-900 to-teal-900",
+  volunteering: "from-amber-900 via-orange-900 to-red-900",
 };
 
-interface RecommendedItem extends Item {
+interface ClubMutual {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
   matchScore: number;
-  explanation: string;
 }
 
-interface HobbyWithMatch extends Hobby {
+interface RecommendedClub extends Item {
   matchScore: number;
-  whyItFits: string;
-  usersDoingIt: number;
+  explanation: string;
+  traitExplanation: string;
+  vectorScore: number;
+  cfScore: number;
+  scoringMethod: string;
+  fallbackReason: string;
+  urgencyScore: number;
+  urgencyLabel: string;
+  deadline: string | null;
+  mutualsInClubCount: number;
+  mutualsInClubPreview: ClubMutual[];
 }
+
+type SortMode = "match" | "urgency";
 
 function getScoreColor(score: number) {
   if (score >= 75) return "green" as const;
@@ -56,85 +67,140 @@ function getScoreColor(score: number) {
   return "grey" as const;
 }
 
-const TAG_COLORS = [
-  "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-  "bg-sky-500/20 text-sky-300 border-sky-500/30",
-  "bg-violet-500/20 text-violet-300 border-violet-500/30",
-  "bg-amber-500/20 text-amber-300 border-amber-500/30",
-  "bg-pink-500/20 text-pink-300 border-pink-500/30",
-  "bg-teal-500/20 text-teal-300 border-teal-500/30",
-  "bg-orange-500/20 text-orange-300 border-orange-500/30",
-  "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-];
+function formatMeetingDate(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
-function getTagColor(tag: string): string {
-  let hash = 0;
-  for (let i = 0; i < tag.length; i++) {
-    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+function getUrgencyBadgeStyle(label: string): string {
+  switch (label) {
+    case "meeting today":
+    case "last chance":
+      return "bg-red-500/20 text-red-300 border-red-500/40";
+    case "meeting tomorrow":
+    case "closing soon":
+      return "bg-orange-500/20 text-orange-300 border-orange-500/40";
+    case "this week":
+      return "bg-yellow-500/20 text-yellow-300 border-yellow-500/40";
+    case "upcoming":
+      return "bg-blue-500/20 text-blue-300 border-blue-500/40";
+    default:
+      return "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
   }
-  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
 }
 
 export default function RecommendationsPage() {
-  const [activeDomain, setActiveDomain] = useState<ContentDomain>("movies");
+  const [selectedDomains, setSelectedDomains] = useState<Set<CampusDomain>>(new Set());
+  const [sortMode, setSortMode] = useState<SortMode>("match");
+
+  const toggleDomain = (key: CampusDomain) => {
+    setSelectedDomains(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const activeDomains = selectedDomains.size === 0
+    ? DOMAINS.map(d => d.key)
+    : Array.from(selectedDomains);
 
   return (
     <div className="flex flex-col" style={{ height: "calc(100dvh - 3.5rem - 3.5rem)" }}>
-      <div className="flex gap-2 overflow-x-auto px-4 sm:px-6 py-2 no-scrollbar bg-background/95 backdrop-blur-sm shrink-0 border-b border-border/30">
-        {DOMAINS.map((domain) => {
-          const Icon = domain.icon;
-          const isActive = activeDomain === domain.key;
-          return (
-            <button
-              key={domain.key}
-              onClick={() => setActiveDomain(domain.key)}
-              className={cn(
-                "flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors border shrink-0",
-                isActive
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted/50 text-muted-foreground border-border/50 hover-elevate"
-              )}
-              data-testid={`tab-domain-${domain.key}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {domain.label}
-            </button>
-          );
-        })}
+      <div className="shrink-0 border-b border-border/30 bg-background/95 backdrop-blur-sm">
+        <div className="flex items-center gap-2 overflow-x-auto px-4 sm:px-6 py-2 no-scrollbar">
+          {DOMAINS.map((domain) => {
+            const Icon = domain.icon;
+            const isActive = selectedDomains.has(domain.key);
+            return (
+              <button
+                key={domain.key}
+                onClick={() => toggleDomain(domain.key)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors border shrink-0",
+                  isActive
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/50 text-muted-foreground border-border/50 hover-elevate"
+                )}
+                data-testid={`tab-domain-${domain.key}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {domain.label}
+              </button>
+            );
+          })}
+
+          <div className="w-px h-6 bg-border/50 shrink-0 mx-1" />
+
+          <button
+            onClick={() => setSortMode(sortMode === "match" ? "urgency" : "match")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors border shrink-0",
+              "bg-muted/50 text-muted-foreground border-border/50 hover-elevate"
+            )}
+            data-testid="button-sort-toggle"
+          >
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            {sortMode === "match" ? "Recommended" : "Upcoming"}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0">
-        {activeDomain === "hobbies" ? (
-          <HobbiesSection />
-        ) : (
-          <DomainRecommendations domain={activeDomain} />
-        )}
+        <ClubRecommendations domains={activeDomains} sortMode={sortMode} />
       </div>
     </div>
   );
 }
 
-function DomainRecommendations({ domain }: { domain: ContentDomain }) {
+function ClubRecommendations({ domains, sortMode }: { domains: CampusDomain[]; sortMode: SortMode }) {
   const { toast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const { data: responseData, isLoading } = useQuery<{ recommendations: RecommendedItem[]; communityPicks: any[] }>({
-    queryKey: ["/api/recommendations", domain],
+  const results = useQuery<{ recommendations: RecommendedClub[]; communityPicks: any[] }[]>({
+    queryKey: ["/api/recommendations/multi", domains.join(","), sortMode],
+    queryFn: async () => {
+      const promises = domains.map(d =>
+        fetch(`/api/recommendations/${d}?sort=${sortMode}`, { credentials: "include" })
+          .then(r => r.ok ? r.json() : { recommendations: [], communityPicks: [] })
+      );
+      return Promise.all(promises);
+    },
   });
-  const items = responseData?.recommendations;
+
+  const allClubs = (results.data || [])
+    .flatMap(d => d.recommendations)
+    .sort((a, b) =>
+      sortMode === "urgency"
+        ? b.urgencyScore - a.urgencyScore
+        : b.matchScore - a.matchScore
+    );
+
+  const seen = new Set<string>();
+  const clubs = allClubs.filter(c => {
+    if (seen.has(c.id)) return false;
+    seen.add(c.id);
+    return true;
+  });
 
   const interactMutation = useMutation({
-    mutationFn: async ({ itemId, action }: { itemId: string; action: string }) => {
-      await apiRequest("POST", "/api/interactions", {
-        itemId,
-        domain,
-        action,
-      });
+    mutationFn: async ({ itemId, domain, action }: { itemId: string; domain: string; action: string }) => {
+      await apiRequest("POST", "/api/interactions", { itemId, domain, action });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/recommendations", domain] });
-      queryClient.invalidateQueries({ queryKey: ["/api/interactions/collection"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recommendations"] });
     },
     onError: (err) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -146,7 +212,7 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [domain]);
+  }, [domains.join(","), sortMode]);
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
@@ -158,31 +224,32 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
     }
   }, []);
 
-  if (isLoading) {
+  if (results.isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="space-y-4 text-center">
           <Skeleton className="h-12 w-12 mx-auto rounded-md" />
           <Skeleton className="h-4 w-40 mx-auto" />
+          <p className="text-sm text-muted-foreground">Finding clubs for you...</p>
         </div>
       </div>
     );
   }
 
-  if (!items || items.length === 0) {
+  if (clubs.length === 0) {
     return (
       <div className="h-full flex items-center justify-center px-6">
         <Card className="p-8 text-center max-w-sm">
           <div className="text-muted-foreground space-y-2">
-            <Film className="h-10 w-10 mx-auto opacity-30" />
-            <p className="text-sm">No recommendations yet. Complete your onboarding to get started.</p>
+            <GraduationCap className="h-10 w-10 mx-auto opacity-30" />
+            <p className="text-sm">No club recommendations yet. Complete your onboarding to get started.</p>
           </div>
         </Card>
       </div>
     );
   }
 
-  const total = items.length;
+  const total = clubs.length;
 
   return (
     <div className="relative h-full">
@@ -192,80 +259,127 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
         onScroll={handleScroll}
         data-testid="snap-scroll-container"
       >
-        {items.map((item, idx) => {
-          const color = getScoreColor(item.matchScore);
-          const itemImage = getItemImage(item.title);
-          const fallback = DOMAIN_FALLBACK[domain];
+        {clubs.map((club, idx) => {
+          const color = getScoreColor(club.matchScore);
+          const domainGradient = DOMAIN_GRADIENTS[(club.domain as CampusDomain)] || DOMAIN_GRADIENTS.academic;
           const isVisible = idx === currentIndex;
           return (
             <div
-              key={item.id}
+              key={club.id}
               className="snap-start w-full h-full relative shrink-0"
-              data-testid={`card-item-${item.id}`}
+              data-testid={`card-club-${club.id}`}
             >
-              <img
-                src={itemImage || fallback}
-                alt={item.title}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-black/5" />
+              <div className={cn("absolute inset-0 bg-gradient-to-br", domainGradient)} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-              <div className="absolute top-4 right-4">
-                <MatchPill score={item.matchScore} size="md" showLabel />
+              <div className="absolute top-4 right-4 flex items-center gap-2">
+                {club.urgencyLabel && club.urgencyScore > 0 && (
+                  <Badge
+                    variant="outline"
+                    className={cn("text-[11px]", getUrgencyBadgeStyle(club.urgencyLabel))}
+                    data-testid={`badge-urgency-${club.id}`}
+                  >
+                    {club.urgencyLabel}
+                  </Badge>
+                )}
+                <MatchPill score={club.matchScore} size="md" showLabel />
               </div>
 
-              <div className="absolute top-4 left-4 flex items-center gap-2 text-white/40 text-xs font-medium">
-                <span>{idx + 1} / {total}</span>
+              <div className="absolute top-4 left-4 flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="text-[11px] bg-white/10 text-white/80 border-white/20"
+                  data-testid={`badge-domain-${club.id}`}
+                >
+                  {club.domain}
+                </Badge>
+                <span className="text-white/40 text-xs font-medium">{idx + 1} / {total}</span>
               </div>
 
               <div className={cn(
-                "absolute bottom-0 left-0 right-0 p-5 sm:p-6 flex flex-col gap-3 transition-all duration-500",
+                "absolute bottom-0 left-0 right-0 p-5 sm:p-6 flex flex-col gap-2.5 transition-all duration-500",
                 isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
               )}>
                 <h2
                   className="font-bold text-white text-2xl sm:text-3xl leading-tight drop-shadow-lg"
-                  data-testid={`text-item-title-${item.id}`}
+                  data-testid={`text-club-title-${club.id}`}
                 >
-                  {item.title}
+                  {club.title}
                 </h2>
 
-                {item.tags && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {item.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className={cn(
-                          "text-[11px] px-2 py-0.5 rounded border font-medium",
-                          getTagColor(tag)
-                        )}
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {item.description && (
-                  <p className="text-sm text-white/80 leading-relaxed max-w-md" data-testid={`text-synopsis-${item.id}`}>
-                    {item.description}
+                {club.description && (
+                  <p className="text-sm text-white/80 leading-relaxed line-clamp-2" data-testid={`text-club-desc-${club.id}`}>
+                    {club.description}
                   </p>
                 )}
+
+                <div className="flex flex-col gap-1.5 text-sm">
+                  {club.nextMeetingAt && (
+                    <div className="flex items-center gap-2 text-white/70">
+                      <Calendar className="h-3.5 w-3.5 shrink-0" />
+                      <span>Next: {formatMeetingDate(club.nextMeetingAt as unknown as string)}</span>
+                    </div>
+                  )}
+                  {!club.nextMeetingAt && club.meetingDay && club.meetingTime && (
+                    <div className="flex items-center gap-2 text-white/70">
+                      <Clock className="h-3.5 w-3.5 shrink-0" />
+                      <span>{club.meetingDay} at {club.meetingTime}</span>
+                    </div>
+                  )}
+                  {club.meetingLocation && (
+                    <div className="flex items-center gap-2 text-white/70">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{club.meetingLocation}</span>
+                    </div>
+                  )}
+                  {club.dues && (
+                    <div className="flex items-center gap-2 text-white/70">
+                      <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                      <span>{club.dues}</span>
+                      {club.duesDeadline && (
+                        <span className="text-white/40 text-xs">
+                          (due {new Date(club.duesDeadline as unknown as string).toLocaleDateString("en-US", { month: "short", day: "numeric" })})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex items-start gap-2 text-xs">
                   <Sparkles className={cn("h-3.5 w-3.5 mt-0.5 shrink-0",
                     color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
                   )} />
-                  <span className="text-white/60 italic">{item.explanation}</span>
+                  <span className="text-white/60 italic">{club.explanation}</span>
                 </div>
 
-                <div className="flex items-center gap-1 pt-1">
+                {club.mutualsInClubCount > 0 && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex -space-x-2">
+                      {club.mutualsInClubPreview.slice(0, 3).map((m) => (
+                        <Avatar key={m.id} className="h-6 w-6 border-2 border-black/50">
+                          <AvatarImage src={m.profileImageUrl || undefined} />
+                          <AvatarFallback className="text-[9px] bg-zinc-700 text-white">
+                            {(m.firstName?.[0] || "") + (m.lastName?.[0] || "")}
+                          </AvatarFallback>
+                        </Avatar>
+                      ))}
+                    </div>
+                    <span className="text-xs text-white/50">
+                      {club.mutualsInClubPreview.slice(0, 2).map(m => m.firstName).join(", ")}
+                      {club.mutualsInClubCount > 2 && ` +${club.mutualsInClubCount - 2} more`}
+                      {" "}similar to you
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1 pt-1 flex-wrap">
                   <Button
                     size="icon"
                     variant="ghost"
                     className="text-white/60"
-                    onClick={() => interactMutation.mutate({ itemId: item.id, action: "skip" })}
+                    onClick={() => interactMutation.mutate({ itemId: club.id, domain: club.domain, action: "skip" })}
                     disabled={interactMutation.isPending}
-                    data-testid={`button-skip-${item.id}`}
+                    data-testid={`button-skip-${club.id}`}
                   >
                     <SkipForward className="h-5 w-5" />
                   </Button>
@@ -273,9 +387,9 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
                     size="icon"
                     variant="ghost"
                     className="text-white/60"
-                    onClick={() => interactMutation.mutate({ itemId: item.id, action: "like" })}
+                    onClick={() => interactMutation.mutate({ itemId: club.id, domain: club.domain, action: "like" })}
                     disabled={interactMutation.isPending}
-                    data-testid={`button-like-${item.id}`}
+                    data-testid={`button-like-${club.id}`}
                   >
                     <ThumbsUp className="h-5 w-5" />
                   </Button>
@@ -283,12 +397,37 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
                     size="icon"
                     variant="ghost"
                     className="text-white/60"
-                    onClick={() => interactMutation.mutate({ itemId: item.id, action: "save" })}
+                    onClick={() => interactMutation.mutate({ itemId: club.id, domain: club.domain, action: "save" })}
                     disabled={interactMutation.isPending}
-                    data-testid={`button-save-${item.id}`}
+                    data-testid={`button-save-${club.id}`}
                   >
                     <Bookmark className="h-5 w-5" />
                   </Button>
+
+                  <div className="flex-1" />
+
+                  {club.signupUrl && (
+                    <Button
+                      variant="outline"
+                      className="bg-white/10 text-white border-white/20 backdrop-blur-sm text-xs"
+                      onClick={() => window.open(club.signupUrl!, "_blank")}
+                      data-testid={`button-signup-${club.id}`}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                      Sign Up
+                    </Button>
+                  )}
+                  {club.instagramUrl && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="bg-white/10 text-white border-white/20 backdrop-blur-sm"
+                      onClick={() => window.open(club.instagramUrl!, "_blank")}
+                      data-testid={`button-instagram-${club.id}`}
+                    >
+                      <SiInstagram className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -303,153 +442,7 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
       )}
 
       <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 pointer-events-none">
-        {items.slice(0, Math.min(total, 12)).map((_, idx) => (
-          <div
-            key={idx}
-            className={cn(
-              "w-1.5 rounded-full transition-all duration-300",
-              idx === currentIndex
-                ? "h-4 bg-white/80"
-                : "h-1.5 bg-white/25"
-            )}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function HobbiesSection() {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  const { data: hobbies, isLoading } = useQuery<HobbyWithMatch[]>({
-    queryKey: ["/api/explore/hobbies"],
-  });
-
-  const handleScroll = useCallback(() => {
-    if (!scrollRef.current) return;
-    const container = scrollRef.current;
-    const itemHeight = container.clientHeight;
-    if (itemHeight > 0) {
-      const index = Math.round(container.scrollTop / itemHeight);
-      setCurrentIndex(index);
-    }
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="space-y-4 text-center">
-          <Skeleton className="h-12 w-12 mx-auto rounded-md" />
-          <Skeleton className="h-4 w-40 mx-auto" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!hobbies || hobbies.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center px-6">
-        <Card className="p-8 text-center max-w-sm">
-          <div className="text-muted-foreground space-y-2">
-            <Compass className="h-10 w-10 mx-auto opacity-30" />
-            <p className="text-sm">Complete your onboarding to get hobby recommendations.</p>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  const total = hobbies.length;
-
-  return (
-    <div className="relative h-full">
-      <div
-        ref={scrollRef}
-        className="h-full overflow-y-auto snap-y snap-mandatory"
-        onScroll={handleScroll}
-        data-testid="snap-scroll-container-hobbies"
-      >
-        {hobbies.map((hobby, idx) => {
-          const color = getScoreColor(hobby.matchScore);
-          const image = getHobbyImage(hobby.title);
-          const isVisible = idx === currentIndex;
-          return (
-            <div
-              key={hobby.id}
-              className="snap-start w-full h-full relative shrink-0"
-              data-testid={`card-hobby-${hobby.id}`}
-            >
-              <img
-                src={image || DOMAIN_FALLBACK.hobbies}
-                alt={hobby.title}
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-black/5" />
-
-              <div className="absolute top-4 right-4">
-                <MatchPill score={hobby.matchScore} size="md" showLabel />
-              </div>
-
-              <div className="absolute top-4 left-4 flex items-center gap-2 text-white/40 text-xs font-medium">
-                <span>{idx + 1} / {total}</span>
-              </div>
-
-              <div className={cn(
-                "absolute bottom-0 left-0 right-0 p-5 sm:p-6 flex flex-col gap-3 transition-all duration-500",
-                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-              )}>
-                <h2 className="font-bold text-white text-2xl sm:text-3xl leading-tight drop-shadow-lg">
-                  {hobby.title}
-                </h2>
-
-                {hobby.tags && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {hobby.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className={cn(
-                          "text-[11px] px-2 py-0.5 rounded border font-medium",
-                          getTagColor(tag)
-                        )}
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {hobby.description && (
-                  <p className="text-sm text-white/80 leading-relaxed max-w-md" data-testid={`text-hobby-desc-${hobby.id}`}>
-                    {hobby.description}
-                  </p>
-                )}
-
-                <div className="flex items-start gap-2 text-xs">
-                  <Sparkles className={cn("h-3.5 w-3.5 mt-0.5 shrink-0",
-                    color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
-                  )} />
-                  <span className="text-white/60 italic">{hobby.whyItFits}</span>
-                </div>
-
-                {hobby.usersDoingIt > 0 && (
-                  <p className="text-xs text-white/40">{hobby.usersDoingIt} people are into this</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {currentIndex < total - 1 && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 animate-bounce pointer-events-none">
-          <ChevronDown className="h-5 w-5 text-white/30" />
-        </div>
-      )}
-
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 pointer-events-none">
-        {hobbies.slice(0, Math.min(total, 12)).map((_, idx) => (
+        {clubs.slice(0, Math.min(total, 12)).map((_, idx) => (
           <div
             key={idx}
             className={cn(

@@ -59,6 +59,14 @@ export const items = pgTable("items", {
   traitAdventure: real("trait_adventure").default(0.5),
   embedding: vector("embedding"),
   embeddingUpdatedAt: timestamp("embedding_updated_at"),
+  nextMeetingAt: timestamp("next_meeting_at"),
+  meetingLocation: text("meeting_location"),
+  meetingDay: text("meeting_day"),
+  meetingTime: text("meeting_time"),
+  signupUrl: text("signup_url"),
+  instagramUrl: text("instagram_url"),
+  dues: text("dues"),
+  duesDeadline: timestamp("dues_deadline"),
 }, (table) => [
   index("items_domain_idx").on(table.domain),
 ]);

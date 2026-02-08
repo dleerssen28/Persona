@@ -1,0 +1,193 @@
+Pivot “For You” → “Clubs” (Keep ML + Architecture)
+
+We are pivoting the existing “For You” tab into a “Clubs” tab while preserving the entire backend architecture, ML engine, embeddings, and hybrid scoring system.
+
+The backend ML pipeline we already built (embeddings, hybrid scoring, collaborative filtering, urgency scoring) must remain intact and be reused for club discovery and ranking.
+
+Do NOT rebuild the app and do NOT change other tabs unless explicitly stated.
+
+Events tab must remain general city/community events and offers.
+
+The change is limited to the For You tab behavior, labeling, filters, and data interpretation.
+
+1. Rename “For You” → “Clubs”
+
+Frontend changes only:
+
+Rename the tab label, page title, and any references from:
+For You → Clubs
+
+Do not change routing structure or component layout.
+
+Keep the TikTok-style full-screen card UI exactly the same.
+
+2. Replace Entertainment Domains with Campus Club Domains
+
+Remove domains:
+movies, music, games, food, hobbies
+
+Replace with:
+academic
+professional
+social
+sports
+volunteering
+
+These should appear as selectable filters at the top.
+
+Allow:
+• selecting multiple domains at once
+• selecting none = show all
+
+If multiple domains are selected, combine results.
+
+3. Add Sorting Mode (Match vs Urgency)
+
+Add a simple toggle UI:
+
+Recommended (default) → sorted by ML match score
+Upcoming → sorted by urgencyScore
+
+Do not redesign UI — reuse existing filter/toggle patterns.
+
+Backend already supports:
+matchScore
+urgencyScore
+
+Just pass:
+GET /api/recommendations/:domain?sort=match
+GET /api/recommendations/:domain?sort=urgency
+
+4. Club Cards (Reuse Existing Card Layout)
+
+Each full-screen card must display:
+
+Club Name
+Description
+Category badge
+Next meeting date
+Location
+Dues deadline (if exists)
+Signup link
+Instagram link
+Mutual friends attending (avatars or count)
+
+Hide fields gracefully if missing.
+
+Do not redesign typography or card layout.
+
+5. Backend Integration (Reuse ML Engine)
+
+Important:
+We are NOT rewriting the backend ML engine.
+
+The existing system must continue to be used:
+
+Embeddings → semantic similarity between users and clubs
+Collaborative filtering → "students like you joined this club"
+Trait explanations → human-readable reasoning
+Urgency scoring → deadlines and upcoming meetings
+Social matching → mutuals and co-attendance
+
+Clubs must be treated as “items” in the same embedding and scoring pipeline.
+
+Ensure /api/recommendations/:domain returns these fields if missing:
+
+nextMeetingAt
+locationDetails
+signupUrl
+instagramUrl
+duesDeadline
+mutualsInClubCount
+mutualsInClubPreview
+urgencyScore
+urgencyLabel
+
+Do NOT remove existing fields:
+matchScore
+explanation
+scoringMethod
+vectorScore
+cfScore
+
+6. Seed Realistic TAMU-Style Clubs (Placeholder Data)
+
+Update seed data to include realistic examples such as:
+
+Aggie Coding Club
+Next meeting: Sept 12
+Location: Zachry Engineering Building
+Dues deadline: Sept 20
+Mutuals: Colin, Andy
+
+Texas A&M Cybersecurity Club
+Workshops + CTF prep
+Location: HRBB
+Meeting every Thursday
+
+Aggie Robotics
+Project teams + competitions
+Location: ETB
+
+Women in Engineering
+Networking + mentorship
+
+Aggie Outdoors
+Camping trips + climbing
+
+Make realistic descriptions and meeting schedules.
+
+This improves demo credibility.
+
+7. Events Tab Must Stay Separate
+
+Events tab should remain:
+
+City events
+Restaurant deals
+Local concerts
+Community events
+Pop-up activities
+
+Do NOT merge Clubs into Events.
+
+Clubs = recruitment + meetings
+Events = social + city happenings
+
+8. Maintain ML + Interdisciplinary Angle
+
+Do NOT remove:
+
+embedding engine
+hybrid scoring
+collaborative filtering
+geospatial ranking
+explainability layer
+
+Clubs should simply become a new domain in the same system.
+
+This preserves:
+AI/ML
+social computing
+behavior modeling
+recommendation systems
+
+9. Final Validation
+
+After implementation:
+
+Run demo/reset
+Open Clubs tab
+Verify:
+No movies/music appear
+Only clubs show
+Match sorting works
+Urgency sorting works
+Events tab unchanged
+
+Optional but Recommended
+
+Add a small badge on club cards:
+“Recommended by AI based on your interests”
+
+This strengthens demo clarity.

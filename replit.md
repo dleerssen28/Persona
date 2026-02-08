@@ -14,7 +14,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 ## Architecture
 
 ### Navigation
-- Bottom navigation bar (mobile-style) with 4 tabs: My DNA, For You, Events, Friends
+- Bottom navigation bar (mobile-style) with 4 tabs: My DNA, Clubs, Events, Friends
 - No sidebar - uses `BottomNav` component fixed at bottom of screen
 
 ### Pages

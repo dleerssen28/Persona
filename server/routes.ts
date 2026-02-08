@@ -3,11 +3,13 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { buildTraitsFromSelections, generateClusters, computeMatchScore, computeItemMatchScore, computeHobbyMatch, getTraitsFromProfile } from "./taste-engine";
-import { TRAIT_AXES, type Domain } from "@shared/schema";
+import { TRAIT_AXES, type Domain, interactions, tasteProfiles } from "@shared/schema";
+import { users } from "@shared/models/auth";
 import { GARV_PROFILE } from "./seed";
 import { hybridRecommend, hybridSocialMatch, hybridEventScore, hybridHobbyScore } from "./hybrid-engine";
 import { recomputeTasteEmbedding, deriveEmbeddingFromProfile, checkEmbeddingHealth, generateBatchEmbeddings, buildEmbeddingText, storeEmbedding, computeWeightedAverageEmbedding, generateEmbedding, computeCosineSimilarity, cosineSimilarityToScore, isValidEmbedding, haversineDistance, getDistanceBucket, findSimilarByEmbedding } from "./embeddings";
-import { pool } from "./db";
+import { db, pool } from "./db";
+import { sql } from "drizzle-orm";
 
 function demoAuth(req: any, res: any, next: any) {
   if (process.env.DEMO_BYPASS_AUTH === "true") {
@@ -17,6 +19,50 @@ function demoAuth(req: any, res: any, next: any) {
     return next();
   }
   return isAuthenticated(req, res, next);
+}
+
+function computeClubUrgency(club: any): { urgencyScore: number; urgencyLabel: string; deadline: string | null } {
+  const now = new Date();
+  const deadlines: { date: Date; type: string }[] = [];
+
+  if (club.nextMeetingAt) deadlines.push({ date: new Date(club.nextMeetingAt), type: "meeting" });
+  if (club.duesDeadline) deadlines.push({ date: new Date(club.duesDeadline), type: "dues" });
+
+  if (deadlines.length === 0) return { urgencyScore: 0, urgencyLabel: "no deadline", deadline: null };
+
+  deadlines.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const nearest = deadlines.find(d => d.date.getTime() > now.getTime());
+  if (!nearest) return { urgencyScore: 0, urgencyLabel: "past", deadline: null };
+
+  const hoursUntil = (nearest.date.getTime() - now.getTime()) / (1000 * 60 * 60);
+  let urgencyScore: number;
+  let urgencyLabel: string;
+
+  if (hoursUntil <= 24) {
+    urgencyScore = 100;
+    urgencyLabel = "meeting today";
+  } else if (hoursUntil <= 48) {
+    urgencyScore = 90;
+    urgencyLabel = "meeting tomorrow";
+  } else if (hoursUntil <= 72) {
+    urgencyScore = 75;
+    urgencyLabel = "this week";
+  } else if (hoursUntil <= 168) {
+    urgencyScore = 50;
+    urgencyLabel = "upcoming";
+  } else if (hoursUntil <= 336) {
+    urgencyScore = 30;
+    urgencyLabel = "next week";
+  } else {
+    urgencyScore = 10;
+    urgencyLabel = "plenty of time";
+  }
+
+  return {
+    urgencyScore,
+    urgencyLabel,
+    deadline: nearest.date.toISOString(),
+  };
 }
 
 function computeUrgency(event: any): { urgencyScore: number; urgencyLabel: string; deadline: string | null } {
@@ -154,6 +200,7 @@ export async function registerRoutes(
     try {
       const userId = req.user.claims.sub;
       const domain = req.params.domain as Domain;
+      const sortMode = (req.query.sort as string) || "match";
 
       const profile = await storage.getTasteProfile(userId);
       if (!profile) {
@@ -167,16 +214,69 @@ export async function registerRoutes(
 
       const { recommendations: hybridResults, communityPicks } = await hybridRecommend(profile, availableItems, userId, domain);
 
-      const scored = hybridResults.map(r => ({
-        ...r.item,
-        matchScore: r.hybridScore,
-        explanation: r.explanation,
-        traitExplanation: r.traitExplanation,
-        vectorScore: r.vectorScore,
-        cfScore: r.cfScore,
-        scoringMethod: r.scoringMethod,
-        fallbackReason: r.fallbackReason,
-      }));
+      const allInteractions = await db.select().from(interactions).where(sql`action IN ('like', 'love', 'save')`);
+      const clubMembers: Record<string, string[]> = {};
+      for (const inter of allInteractions) {
+        if (!clubMembers[inter.itemId]) clubMembers[inter.itemId] = [];
+        if (inter.userId !== userId && !clubMembers[inter.itemId].includes(inter.userId)) {
+          clubMembers[inter.itemId].push(inter.userId);
+        }
+      }
+
+      const allProfiles = await db.select().from(tasteProfiles);
+      const profileMap = new Map(allProfiles.map(p => [p.userId, p]));
+      const userProfile = profileMap.get(userId);
+      const userEmb = userProfile?.embedding;
+
+      const allUsers = await db.select().from(users);
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+      const scored = hybridResults.map(r => {
+        const urgency = computeClubUrgency(r.item);
+        const memberIds = clubMembers[r.item.id] || [];
+        let mutualsInClub: { id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null; matchScore: number }[] = [];
+
+        if (userEmb && memberIds.length > 0) {
+          for (const mid of memberIds) {
+            const mp = profileMap.get(mid);
+            if (mp?.embedding) {
+              const sim = computeCosineSimilarity(userEmb, mp.embedding);
+              const score = cosineSimilarityToScore(sim);
+              if (score >= 65) {
+                const u = userMap.get(mid);
+                mutualsInClub.push({
+                  id: mid,
+                  firstName: u?.firstName || null,
+                  lastName: u?.lastName || null,
+                  profileImageUrl: u?.profileImageUrl || null,
+                  matchScore: score,
+                });
+              }
+            }
+          }
+          mutualsInClub.sort((a, b) => b.matchScore - a.matchScore);
+        }
+
+        return {
+          ...r.item,
+          matchScore: r.hybridScore,
+          explanation: r.explanation,
+          traitExplanation: r.traitExplanation,
+          vectorScore: r.vectorScore,
+          cfScore: r.cfScore,
+          scoringMethod: r.scoringMethod,
+          fallbackReason: r.fallbackReason,
+          urgencyScore: urgency.urgencyScore,
+          urgencyLabel: urgency.urgencyLabel,
+          deadline: urgency.deadline,
+          mutualsInClubCount: mutualsInClub.length,
+          mutualsInClubPreview: mutualsInClub.slice(0, 3),
+        };
+      });
+
+      if (sortMode === "urgency") {
+        scored.sort((a, b) => b.urgencyScore - a.urgencyScore);
+      }
 
       res.json({
         recommendations: scored.slice(0, 12),
