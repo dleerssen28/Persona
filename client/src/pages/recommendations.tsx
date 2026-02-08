@@ -9,9 +9,9 @@ import { cn } from "@/lib/utils";
 import { type Item, type Hobby } from "@shared/schema";
 import {
   Film, Music, Gamepad2, UtensilsCrossed, Compass,
-  Bookmark, SkipForward, ThumbsUp, Sparkles
+  Bookmark, SkipForward, ThumbsUp, Sparkles, ChevronDown, ChevronUp
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { getItemImage } from "@/lib/item-images";
 import { getHobbyImage } from "@/lib/hobby-images";
 
@@ -79,17 +79,8 @@ export default function RecommendationsPage() {
   const [activeDomain, setActiveDomain] = useState<ContentDomain>("movies");
 
   return (
-    <div className="pb-4">
-      <div className="px-4 sm:px-6 pt-4 pb-3">
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-recommendations-title">
-          For You
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Content matched to your Taste DNA
-        </p>
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto px-4 sm:px-6 pb-4 no-scrollbar sticky top-14 z-30 bg-background/95 backdrop-blur-sm pt-1">
+    <div className="flex flex-col" style={{ height: "calc(100dvh - 3.5rem - 3.5rem)" }}>
+      <div className="flex gap-2 overflow-x-auto px-4 sm:px-6 py-2 no-scrollbar bg-background/95 backdrop-blur-sm shrink-0 border-b border-border/30">
         {DOMAINS.map((domain) => {
           const Icon = domain.icon;
           const isActive = activeDomain === domain.key;
@@ -98,7 +89,7 @@ export default function RecommendationsPage() {
               key={domain.key}
               onClick={() => setActiveDomain(domain.key)}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors border shrink-0",
+                "flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors border shrink-0",
                 isActive
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-muted/50 text-muted-foreground border-border/50 hover-elevate"
@@ -112,17 +103,21 @@ export default function RecommendationsPage() {
         })}
       </div>
 
-      {activeDomain === "hobbies" ? (
-        <HobbiesSection />
-      ) : (
-        <DomainRecommendations domain={activeDomain} />
-      )}
+      <div className="flex-1 min-h-0">
+        {activeDomain === "hobbies" ? (
+          <HobbiesSection />
+        ) : (
+          <DomainRecommendations domain={activeDomain} />
+        )}
+      </div>
     </div>
   );
 }
 
 function DomainRecommendations({ domain }: { domain: ContentDomain }) {
   const { toast } = useToast();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   const { data: items, isLoading } = useQuery<RecommendedItem[]>({
     queryKey: ["/api/recommendations", domain],
@@ -144,20 +139,38 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
     },
   });
 
+  useEffect(() => {
+    setCurrentIndex(0);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [domain]);
+
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    const itemHeight = container.clientHeight;
+    if (itemHeight > 0) {
+      const index = Math.round(container.scrollTop / itemHeight);
+      setCurrentIndex(index);
+    }
+  }, []);
+
   if (isLoading) {
     return (
-      <div className="space-y-4 px-4 sm:px-6">
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-56 w-full rounded-md" />
-        ))}
+      <div className="h-full flex items-center justify-center">
+        <div className="space-y-4 text-center">
+          <Skeleton className="h-12 w-12 mx-auto rounded-md" />
+          <Skeleton className="h-4 w-40 mx-auto" />
+        </div>
       </div>
     );
   }
 
   if (!items || items.length === 0) {
     return (
-      <div className="px-4 sm:px-6">
-        <Card className="p-8 text-center">
+      <div className="h-full flex items-center justify-center px-6">
+        <Card className="p-8 text-center max-w-sm">
           <div className="text-muted-foreground space-y-2">
             <Film className="h-10 w-10 mx-auto opacity-30" />
             <p className="text-sm">No recommendations yet. Complete your onboarding to get started.</p>
@@ -167,120 +180,176 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
     );
   }
 
-  return (
-    <div className="space-y-4 px-4 sm:px-6">
-      {items.map((item) => {
-        const color = getScoreColor(item.matchScore);
-        const itemImage = getItemImage(item.title);
-        const fallback = DOMAIN_FALLBACK[domain];
-        return (
-          <div
-            key={item.id}
-            className="relative w-full h-56 sm:h-64 rounded-md overflow-hidden"
-            data-testid={`card-item-${item.id}`}
-          >
-            <img
-              src={itemImage || fallback}
-              alt={item.title}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10" />
+  const total = items.length;
 
-            <div className="relative h-full flex flex-col justify-end p-4 gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <h3
-                  className="font-bold text-white text-xl leading-tight drop-shadow-sm truncate"
+  return (
+    <div className="relative h-full">
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto snap-y snap-mandatory"
+        onScroll={handleScroll}
+        data-testid="snap-scroll-container"
+      >
+        {items.map((item, idx) => {
+          const color = getScoreColor(item.matchScore);
+          const itemImage = getItemImage(item.title);
+          const fallback = DOMAIN_FALLBACK[domain];
+          const isVisible = idx === currentIndex;
+          return (
+            <div
+              key={item.id}
+              className="snap-start w-full h-full relative shrink-0"
+              data-testid={`card-item-${item.id}`}
+            >
+              <img
+                src={itemImage || fallback}
+                alt={item.title}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-black/5" />
+
+              <div className="absolute top-4 right-4">
+                <MatchPill score={item.matchScore} size="md" showLabel />
+              </div>
+
+              <div className="absolute top-4 left-4 flex items-center gap-2 text-white/40 text-xs font-medium">
+                <span>{idx + 1} / {total}</span>
+              </div>
+
+              <div className={cn(
+                "absolute bottom-0 left-0 right-0 p-5 sm:p-6 flex flex-col gap-3 transition-all duration-500",
+                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+              )}>
+                <h2
+                  className="font-bold text-white text-2xl sm:text-3xl leading-tight drop-shadow-lg"
                   data-testid={`text-item-title-${item.id}`}
                 >
                   {item.title}
-                </h3>
-                <div className="shrink-0">
-                  <MatchPill score={item.matchScore} size="sm" showLabel={false} />
+                </h2>
+
+                {item.tags && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className={cn(
+                          "text-[11px] px-2 py-0.5 rounded border font-medium",
+                          getTagColor(tag)
+                        )}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {item.description && (
+                  <p className="text-sm text-white/80 leading-relaxed max-w-md" data-testid={`text-synopsis-${item.id}`}>
+                    {item.description}
+                  </p>
+                )}
+
+                <div className="flex items-start gap-2 text-xs">
+                  <Sparkles className={cn("h-3.5 w-3.5 mt-0.5 shrink-0",
+                    color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
+                  )} />
+                  <span className="text-white/60 italic">{item.explanation}</span>
                 </div>
-              </div>
 
-              {item.tags && (
-                <div className="flex flex-wrap gap-1.5">
-                  {item.tags.slice(0, 4).map((tag) => (
-                    <span
-                      key={tag}
-                      className={cn(
-                        "text-[11px] px-2 py-0.5 rounded border font-medium",
-                        getTagColor(tag)
-                      )}
-                    >
-                      {tag}
-                    </span>
-                  ))}
+                <div className="flex items-center gap-1 pt-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-white/60"
+                    onClick={() => interactMutation.mutate({ itemId: item.id, action: "skip" })}
+                    disabled={interactMutation.isPending}
+                    data-testid={`button-skip-${item.id}`}
+                  >
+                    <SkipForward className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-white/60"
+                    onClick={() => interactMutation.mutate({ itemId: item.id, action: "like" })}
+                    disabled={interactMutation.isPending}
+                    data-testid={`button-like-${item.id}`}
+                  >
+                    <ThumbsUp className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-white/60"
+                    onClick={() => interactMutation.mutate({ itemId: item.id, action: "save" })}
+                    disabled={interactMutation.isPending}
+                    data-testid={`button-save-${item.id}`}
+                  >
+                    <Bookmark className="h-5 w-5" />
+                  </Button>
                 </div>
-              )}
-
-              <div className="flex items-start gap-1.5 text-xs">
-                <Sparkles className={cn("h-3 w-3 mt-0.5 shrink-0",
-                  color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
-                )} />
-                <span className="text-white/70 line-clamp-1">{item.explanation}</span>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="text-white/70 hover:text-white"
-                  onClick={() => interactMutation.mutate({ itemId: item.id, action: "skip" })}
-                  disabled={interactMutation.isPending}
-                  data-testid={`button-skip-${item.id}`}
-                >
-                  <SkipForward className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="text-white/70 hover:text-white"
-                  onClick={() => interactMutation.mutate({ itemId: item.id, action: "like" })}
-                  disabled={interactMutation.isPending}
-                  data-testid={`button-like-${item.id}`}
-                >
-                  <ThumbsUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="text-white/70 hover:text-white"
-                  onClick={() => interactMutation.mutate({ itemId: item.id, action: "save" })}
-                  disabled={interactMutation.isPending}
-                  data-testid={`button-save-${item.id}`}
-                >
-                  <Bookmark className="h-4 w-4" />
-                </Button>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+
+      {currentIndex < total - 1 && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 animate-bounce pointer-events-none">
+          <ChevronDown className="h-5 w-5 text-white/30" />
+        </div>
+      )}
+
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 pointer-events-none">
+        {items.slice(0, Math.min(total, 12)).map((_, idx) => (
+          <div
+            key={idx}
+            className={cn(
+              "w-1.5 rounded-full transition-all duration-300",
+              idx === currentIndex
+                ? "h-4 bg-white/80"
+                : "h-1.5 bg-white/25"
+            )}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
 function HobbiesSection() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
   const { data: hobbies, isLoading } = useQuery<HobbyWithMatch[]>({
     queryKey: ["/api/explore/hobbies"],
   });
 
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    const itemHeight = container.clientHeight;
+    if (itemHeight > 0) {
+      const index = Math.round(container.scrollTop / itemHeight);
+      setCurrentIndex(index);
+    }
+  }, []);
+
   if (isLoading) {
     return (
-      <div className="space-y-4 px-4 sm:px-6">
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-56 w-full rounded-md" />
-        ))}
+      <div className="h-full flex items-center justify-center">
+        <div className="space-y-4 text-center">
+          <Skeleton className="h-12 w-12 mx-auto rounded-md" />
+          <Skeleton className="h-4 w-40 mx-auto" />
+        </div>
       </div>
     );
   }
 
   if (!hobbies || hobbies.length === 0) {
     return (
-      <div className="px-4 sm:px-6">
-        <Card className="p-8 text-center">
+      <div className="h-full flex items-center justify-center px-6">
+        <Card className="p-8 text-center max-w-sm">
           <div className="text-muted-foreground space-y-2">
             <Compass className="h-10 w-10 mx-auto opacity-30" />
             <p className="text-sm">Complete your onboarding to get hobby recommendations.</p>
@@ -290,66 +359,106 @@ function HobbiesSection() {
     );
   }
 
-  return (
-    <div className="space-y-4 px-4 sm:px-6">
-      {hobbies.map((hobby) => {
-        const color = getScoreColor(hobby.matchScore);
-        const image = getHobbyImage(hobby.title);
-        return (
-          <div
-            key={hobby.id}
-            className="relative w-full h-56 sm:h-64 rounded-md overflow-hidden"
-            data-testid={`card-hobby-${hobby.id}`}
-          >
-            <img
-              src={image || DOMAIN_FALLBACK.hobbies}
-              alt={hobby.title}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10" />
+  const total = hobbies.length;
 
-            <div className="relative h-full flex flex-col justify-end p-4 gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="font-bold text-white text-xl leading-tight drop-shadow-sm truncate">
-                  {hobby.title}
-                </h3>
-                <div className="shrink-0">
-                  <MatchPill score={hobby.matchScore} size="sm" showLabel={false} />
-                </div>
+  return (
+    <div className="relative h-full">
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto snap-y snap-mandatory"
+        onScroll={handleScroll}
+        data-testid="snap-scroll-container-hobbies"
+      >
+        {hobbies.map((hobby, idx) => {
+          const color = getScoreColor(hobby.matchScore);
+          const image = getHobbyImage(hobby.title);
+          const isVisible = idx === currentIndex;
+          return (
+            <div
+              key={hobby.id}
+              className="snap-start w-full h-full relative shrink-0"
+              data-testid={`card-hobby-${hobby.id}`}
+            >
+              <img
+                src={image || DOMAIN_FALLBACK.hobbies}
+                alt={hobby.title}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-black/5" />
+
+              <div className="absolute top-4 right-4">
+                <MatchPill score={hobby.matchScore} size="md" showLabel />
               </div>
 
-              {hobby.tags && (
-                <div className="flex flex-wrap gap-1.5">
-                  {hobby.tags.slice(0, 4).map((tag) => (
-                    <span
-                      key={tag}
-                      className={cn(
-                        "text-[11px] px-2 py-0.5 rounded border font-medium",
-                        getTagColor(tag)
-                      )}
-                    >
-                      {tag}
-                    </span>
-                  ))}
+              <div className="absolute top-4 left-4 flex items-center gap-2 text-white/40 text-xs font-medium">
+                <span>{idx + 1} / {total}</span>
+              </div>
+
+              <div className={cn(
+                "absolute bottom-0 left-0 right-0 p-5 sm:p-6 flex flex-col gap-3 transition-all duration-500",
+                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+              )}>
+                <h2 className="font-bold text-white text-2xl sm:text-3xl leading-tight drop-shadow-lg">
+                  {hobby.title}
+                </h2>
+
+                {hobby.tags && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {hobby.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className={cn(
+                          "text-[11px] px-2 py-0.5 rounded border font-medium",
+                          getTagColor(tag)
+                        )}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {hobby.description && (
+                  <p className="text-sm text-white/80 leading-relaxed max-w-md" data-testid={`text-hobby-desc-${hobby.id}`}>
+                    {hobby.description}
+                  </p>
+                )}
+
+                <div className="flex items-start gap-2 text-xs">
+                  <Sparkles className={cn("h-3.5 w-3.5 mt-0.5 shrink-0",
+                    color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
+                  )} />
+                  <span className="text-white/60 italic">{hobby.whyItFits}</span>
                 </div>
-              )}
 
-              {hobby.description && (
-                <p className="text-xs text-white/70 leading-relaxed line-clamp-2">
-                  {hobby.description}
-                </p>
-              )}
-
-              <div className="flex items-start gap-1.5 text-xs">
-                <Sparkles className={cn("h-3 w-3 mt-0.5 shrink-0",
-                  color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
-                )} />
-                <span className="text-white/70 line-clamp-1">{hobby.whyItFits}</span>
+                {hobby.usersDoingIt > 0 && (
+                  <p className="text-xs text-white/40">{hobby.usersDoingIt} people are into this</p>
+                )}
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+
+      {currentIndex < total - 1 && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 animate-bounce pointer-events-none">
+          <ChevronDown className="h-5 w-5 text-white/30" />
+        </div>
+      )}
+
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1.5 pointer-events-none">
+        {hobbies.slice(0, Math.min(total, 12)).map((_, idx) => (
+          <div
+            key={idx}
+            className={cn(
+              "w-1.5 rounded-full transition-all duration-300",
+              idx === currentIndex
+                ? "h-4 bg-white/80"
+                : "h-1.5 bg-white/25"
+            )}
+          />
+        ))}
+      </div>
     </div>
   );
 }

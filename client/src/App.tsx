@@ -45,6 +45,9 @@ function AuthenticatedApp() {
         .then((r) => r.json())
         .then(() => {
           queryClient.invalidateQueries({ queryKey: ["/api/taste-profile"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/recommendations"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/explore/hobbies"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/social/matches"] });
           setBootstrapping(false);
         })
         .catch(() => setBootstrapping(false));
