@@ -76,25 +76,25 @@ const THEMES: ThemeConfig[] = [
     label: "Oceanic",
     image: themeOceanic,
     accent: "from-cyan-500/20 to-blue-600/20",
-    glassColor: "bg-cyan-950/40 border-cyan-400/15",
+    glassColor: "bg-white/[0.08] border-white/20",
   },
   {
     id: "aurora",
     label: "Aurora",
     image: themeAurora,
     accent: "from-green-500/20 to-purple-600/20",
-    glassColor: "bg-indigo-950/40 border-green-400/15",
+    glassColor: "bg-white/[0.08] border-white/20",
   },
   {
     id: "ember",
     label: "Ember",
     image: themeEmber,
     accent: "from-orange-500/20 to-red-600/20",
-    glassColor: "bg-red-950/40 border-orange-400/15",
+    glassColor: "bg-white/[0.08] border-white/20",
   },
 ];
 
-const GLASS_BASE = "backdrop-blur-xl border rounded-md shadow-lg";
+const GLASS_BASE = "backdrop-blur-md border rounded-md shadow-lg";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -149,7 +149,7 @@ export default function ProfilePage() {
   const currentTheme = THEMES.find((t) => t.id === activeTheme) ?? THEMES[0];
   const themeImage = activeTheme === "custom" && customThemeImage ? customThemeImage : currentTheme.image;
   const glassClass = activeTheme === "custom"
-    ? "bg-black/40 border-white/15"
+    ? "bg-white/[0.08] border-white/20"
     : currentTheme.glassColor;
 
   const coverImage = coverSkateboarding;
@@ -208,7 +208,7 @@ export default function ProfilePage() {
             return (
               <div
                 key={key}
-                className="p-3 rounded-md bg-white/10 text-center space-y-1"
+                className="p-3 rounded-md bg-white/[0.06] text-center space-y-1"
               >
                 <span className={cn("text-xs font-bold tabular-nums", color.text)}>#{idx + 1}</span>
                 <div className="text-xs font-medium text-white/60">{TRAIT_LABELS[key]}</div>
@@ -230,7 +230,7 @@ export default function ProfilePage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {topMovie && (
-            <div className="p-3 rounded-md bg-white/10 space-y-1">
+            <div className="p-3 rounded-md bg-white/[0.06] space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-white/60">
                 <Film className="h-3 w-3" />
                 <span>Top Movie</span>
@@ -240,7 +240,7 @@ export default function ProfilePage() {
             </div>
           )}
           {topSong && (
-            <div className="p-3 rounded-md bg-white/10 space-y-1">
+            <div className="p-3 rounded-md bg-white/[0.06] space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-white/60">
                 <Music className="h-3 w-3" />
                 <span>Top Music</span>
@@ -250,7 +250,7 @@ export default function ProfilePage() {
             </div>
           )}
           {topGame && (
-            <div className="p-3 rounded-md bg-white/10 space-y-1">
+            <div className="p-3 rounded-md bg-white/[0.06] space-y-1">
               <div className="flex items-center gap-1.5 text-xs text-white/60">
                 <Gamepad2 className="h-3 w-3" />
                 <span>Top Game</span>
@@ -285,7 +285,7 @@ export default function ProfilePage() {
                       {Math.round(val * 100)}%
                     </span>
                   </div>
-                  <div className="h-1.5 bg-white/10 rounded-md overflow-hidden">
+                  <div className="h-1.5 bg-white/[0.06] rounded-md overflow-hidden">
                     <div
                       className={cn("h-full rounded-md transition-all duration-700 ease-out", color.bar)}
                       style={{ width: `${val * 100}%` }}
@@ -368,7 +368,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="relative min-h-screen max-w-3xl mx-auto overflow-hidden">
+    <div className="relative min-h-screen">
       <div className="fixed inset-0 -z-10">
         <img
           src={themeImage}
@@ -376,7 +376,7 @@ export default function ProfilePage() {
           className="w-full h-full object-cover"
           data-testid="img-theme-background"
         />
-        <div className="absolute inset-0 bg-black/30" />
+        <div className="absolute inset-0 bg-black/20" />
       </div>
 
       <input
@@ -388,8 +388,8 @@ export default function ProfilePage() {
         data-testid="input-custom-theme"
       />
 
-      <div className="relative">
-        <div className="relative h-44 sm:h-52 overflow-hidden">
+      <div className="relative max-w-3xl mx-auto">
+        <div className="relative h-48 sm:h-56 overflow-hidden rounded-b-lg">
           <img
             src={coverImage}
             alt="Profile cover"
@@ -413,7 +413,7 @@ export default function ProfilePage() {
 
         {settingsOpen && (
           <div
-            className={cn(GLASS_BASE, "absolute top-14 right-3 z-30 w-72 p-4 bg-black/60 border-white/15")}
+            className={cn(GLASS_BASE, "absolute top-14 right-3 z-30 w-72 p-4 bg-black/40 border-white/20")}
             data-testid="settings-panel"
           >
             <div className="flex items-center justify-between mb-3">
@@ -512,7 +512,7 @@ export default function ProfilePage() {
           </div>
 
           {editingLayout && (
-            <div className={cn(GLASS_BASE, "p-4 bg-black/50 border-white/15")} data-testid="section-editor">
+            <div className={cn(GLASS_BASE, "p-4 bg-black/30 border-white/20")} data-testid="section-editor">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs text-white/60">
                   Reorder or toggle sections to customize your profile
