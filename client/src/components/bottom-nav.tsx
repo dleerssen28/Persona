@@ -1,10 +1,11 @@
 import { useLocation, Link } from "wouter";
-import { User, GraduationCap, Users, CalendarDays } from "lucide-react";
+import { User, GraduationCap, Users, CalendarDays, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { title: "My DNA", href: "/", icon: User },
   { title: "Clubs", href: "/recommendations", icon: GraduationCap },
+  { title: "Maps", href: "/explore", icon: Map },
   { title: "Events", href: "/events", icon: CalendarDays },
   { title: "Friends", href: "/social", icon: Users },
 ];

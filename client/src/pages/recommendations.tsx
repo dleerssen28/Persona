@@ -6,17 +6,26 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MatchPill } from "@/components/match-pill";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { type Item } from "@shared/schema";
+import { getClubImage } from "@/lib/club-images";
 import {
   GraduationCap, Briefcase, Users, Trophy, Heart,
   Bookmark, SkipForward, ThumbsUp, Sparkles, ChevronDown,
   MapPin, Clock, Calendar, DollarSign, ExternalLink,
-  ArrowUpDown, SlidersHorizontal
+  ArrowUpDown, SlidersHorizontal, Info,
+  SearchX, RotateCcw,
 } from "lucide-react";
 import { SiInstagram } from "react-icons/si";
 import { useState, useRef, useEffect, useCallback } from "react";
+
+const SCROLL_KEY = "persona_clubs_scroll";
 
 type CampusDomain = "academic" | "professional" | "social" | "sports" | "volunteering";
 
@@ -57,6 +66,9 @@ interface RecommendedClub extends Item {
   deadline: string | null;
   mutualsInClubCount: number;
   mutualsInClubPreview: ClubMutual[];
+  whyShort: string;
+  whyLong: string;
+  matchMathTooltip: string;
 }
 
 type SortMode = "match" | "urgency";
@@ -221,8 +233,27 @@ function ClubRecommendations({ domains, sortMode }: { domains: CampusDomain[]; s
     if (itemHeight > 0) {
       const index = Math.round(container.scrollTop / itemHeight);
       setCurrentIndex(index);
+      try { sessionStorage.setItem(SCROLL_KEY, String(index)); } catch {}
     }
   }, []);
+
+  useEffect(() => {
+    if (!scrollRef.current || clubs.length === 0) return;
+    try {
+      const saved = sessionStorage.getItem(SCROLL_KEY);
+      if (saved) {
+        const idx = parseInt(saved, 10);
+        if (idx > 0 && idx < clubs.length) {
+          requestAnimationFrame(() => {
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = idx * scrollRef.current.clientHeight;
+              setCurrentIndex(idx);
+            }
+          });
+        }
+      }
+    } catch {}
+  }, [clubs.length]);
 
   if (results.isLoading) {
     return (
@@ -266,11 +297,17 @@ function ClubRecommendations({ domains, sortMode }: { domains: CampusDomain[]; s
           return (
             <div
               key={club.id}
-              className="snap-start w-full h-full relative shrink-0"
+              className="snap-start w-full h-full relative shrink-0 will-change-transform"
               data-testid={`card-club-${club.id}`}
             >
-              <div className={cn("absolute inset-0 bg-gradient-to-br", domainGradient)} />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <img
+                src={getClubImage(club.imageUrl)}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                loading={idx < 3 ? "eager" : "lazy"}
+              />
+              <div className={cn("absolute inset-0 bg-gradient-to-br opacity-40", domainGradient)} />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/10" />
 
               <div className="absolute top-4 right-4 flex items-center gap-2">
                 {club.urgencyLabel && club.urgencyScore > 0 && (
@@ -282,7 +319,22 @@ function ClubRecommendations({ domains, sortMode }: { domains: CampusDomain[]; s
                     {club.urgencyLabel}
                   </Badge>
                 )}
-                <MatchPill score={club.matchScore} size="md" showLabel />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button data-testid={`match-score-${club.id}`} className="cursor-pointer">
+                      <MatchPill score={club.matchScore} size="md" showLabel />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="left" className="max-w-xs bg-zinc-900 text-zinc-100 border-zinc-700 p-3 w-auto" data-testid={`tooltip-match-${club.id}`}>
+                    <div className="space-y-1.5 text-xs">
+                      {(club.matchMathTooltip || `Score: ${club.matchScore}%\nscoringMethod: ${club.scoringMethod}`).split("\n").map((line, i) => (
+                        <p key={i} className={i === 0 ? "font-medium text-white" : "text-zinc-300"}>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="absolute top-4 left-4 flex items-center gap-2">
@@ -345,12 +397,22 @@ function ClubRecommendations({ domains, sortMode }: { domains: CampusDomain[]; s
                   )}
                 </div>
 
-                <div className="flex items-start gap-2 text-xs">
-                  <Sparkles className={cn("h-3.5 w-3.5 mt-0.5 shrink-0",
-                    color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
-                  )} />
-                  <span className="text-white/60 italic">{club.explanation}</span>
-                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <div className="flex items-start gap-2 text-xs cursor-pointer" data-testid={`why-${club.id}`}>
+                      <Sparkles className={cn("h-3.5 w-3.5 mt-0.5 shrink-0",
+                        color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
+                      )} />
+                      <span className="text-white/60">{club.whyShort || club.explanation}</span>
+                      <Info className="h-3 w-3 shrink-0 mt-0.5 text-white/30" />
+                    </div>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="max-w-sm bg-zinc-900 text-zinc-100 border-zinc-700 p-3 w-auto" data-testid={`tooltip-why-${club.id}`}>
+                    <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                      {club.whyLong || club.traitExplanation || club.explanation}
+                    </p>
+                  </PopoverContent>
+                </Popover>
 
                 {club.mutualsInClubCount > 0 && (
                   <div className="flex items-center gap-2">
@@ -417,25 +479,45 @@ function ClubRecommendations({ domains, sortMode }: { domains: CampusDomain[]; s
                       Sign Up
                     </Button>
                   )}
-                  {club.instagramUrl && (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="bg-white/10 text-white border-white/20 backdrop-blur-sm"
-                      onClick={() => window.open(club.instagramUrl!, "_blank")}
-                      data-testid={`button-instagram-${club.id}`}
-                    >
-                      <SiInstagram className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="bg-white/10 text-white border-white/20 backdrop-blur-sm"
+                    onClick={() => window.open("https://instagram.com/therock/", "_blank")}
+                    data-testid={`button-instagram-${club.id}`}
+                  >
+                    <SiInstagram className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </div>
           );
         })}
+        <div className="snap-start w-full h-full relative shrink-0 flex items-center justify-center bg-gradient-to-b from-zinc-900 to-black" data-testid="end-of-clubs">
+          <div className="text-center space-y-4 px-8">
+            <SearchX className="h-12 w-12 mx-auto text-primary/60" />
+            <h3 className="text-xl font-bold text-white">You've seen all clubs</h3>
+            <p className="text-sm text-white/50">Explore other categories or check back as new clubs are added</p>
+            <Button
+              variant="outline"
+              className="bg-white/10 text-white border-white/20"
+              onClick={() => {
+                if (scrollRef.current) {
+                  scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+                  setCurrentIndex(0);
+                  try { sessionStorage.setItem(SCROLL_KEY, "0"); } catch {}
+                }
+              }}
+              data-testid="button-restart-clubs"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Back to top
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {currentIndex < total - 1 && (
+      {currentIndex < total && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 animate-bounce pointer-events-none">
           <ChevronDown className="h-5 w-5 text-white/30" />
         </div>

@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSearch } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getEventImage } from "@/lib/event-images";
@@ -9,15 +10,18 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   MapPin, Clock, Users, Hand, ChevronDown,
-  Filter, Tag, Sparkles, AlertCircle, Info
+  Filter, Tag, Sparkles, AlertCircle, Info,
+  PartyPopper, RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const SCROLL_KEY = "persona_events_scroll";
 
 type EventFilter = "all" | "deals" | "campus" | "parties" | "study" | "shows" | "misc";
 
@@ -109,6 +113,8 @@ export default function EventsPage() {
   const [activeFilters, setActiveFilters] = useState<Set<EventFilter>>(() => new Set<EventFilter>(["all"]));
   const scrollRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const searchString = useSearch();
+  const highlightEventId = new URLSearchParams(searchString).get("event");
 
   const { data: events, isLoading } = useQuery<EventData[]>({
     queryKey: ["/api/events/for-you"],
@@ -126,8 +132,27 @@ export default function EventsPage() {
     if (itemHeight > 0) {
       const index = Math.round(container.scrollTop / itemHeight);
       setCurrentIndex(index);
+      try { sessionStorage.setItem(SCROLL_KEY, String(index)); } catch {}
     }
   }, []);
+
+  useEffect(() => {
+    if (!scrollRef.current || !events?.length) return;
+    try {
+      const saved = sessionStorage.getItem(SCROLL_KEY);
+      if (saved && !highlightEventId) {
+        const idx = parseInt(saved, 10);
+        if (idx > 0 && idx < events.length) {
+          requestAnimationFrame(() => {
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = idx * scrollRef.current.clientHeight;
+              setCurrentIndex(idx);
+            }
+          });
+        }
+      }
+    } catch {}
+  }, [events, highlightEventId]);
 
   const toggleFilter = useCallback((filter: EventFilter) => {
     setActiveFilters(prev => {
@@ -159,7 +184,23 @@ export default function EventsPage() {
     );
   }
 
-  const filteredEvents = (events || []).filter(e => matchesFilters(e, activeFilters));
+  const filteredEvents = (() => {
+    let filtered = (events || []).filter(e => matchesFilters(e, activeFilters));
+    if (highlightEventId) {
+      const idx = filtered.findIndex(e => String(e.id) === highlightEventId);
+      if (idx > 0) {
+        const [highlighted] = filtered.splice(idx, 1);
+        filtered = [highlighted, ...filtered];
+      } else if (idx === -1) {
+        const allEvents = events || [];
+        const found = allEvents.find(e => String(e.id) === highlightEventId);
+        if (found) {
+          filtered = [found, ...filtered];
+        }
+      }
+    }
+    return filtered;
+  })();
 
   return (
     <div className="flex flex-col" style={{ height: "calc(100dvh - 3.5rem - 3.5rem)" }}>
@@ -201,16 +242,38 @@ export default function EventsPage() {
                 isVisible={idx === currentIndex}
               />
             ))}
+            <div className="snap-start w-full h-full relative shrink-0 flex items-center justify-center bg-gradient-to-b from-zinc-900 to-black" data-testid="end-of-events">
+              <div className="text-center space-y-4 px-8">
+                <PartyPopper className="h-12 w-12 mx-auto text-primary/60" />
+                <h3 className="text-xl font-bold text-white">You've seen all events</h3>
+                <p className="text-sm text-white/50">Check back later for new happenings around campus</p>
+                <Button
+                  variant="outline"
+                  className="bg-white/10 text-white border-white/20"
+                  onClick={() => {
+                    if (scrollRef.current) {
+                      scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+                      setCurrentIndex(0);
+                      try { sessionStorage.setItem(SCROLL_KEY, "0"); } catch {}
+                    }
+                  }}
+                  data-testid="button-restart-events"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Back to top
+                </Button>
+              </div>
+            </div>
           </div>
 
-          {filteredEvents.length > 1 && currentIndex < filteredEvents.length - 1 && (
+          {filteredEvents.length > 1 && currentIndex < filteredEvents.length && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 animate-bounce pointer-events-none">
               <ChevronDown className="h-6 w-6 text-white/60" />
             </div>
           )}
 
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1">
-            {filteredEvents.map((_, idx) => (
+            {filteredEvents.slice(0, Math.min(filteredEvents.length, 12)).map((_, idx) => (
               <div
                 key={idx}
                 className={cn(
@@ -285,13 +348,13 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
       </div>
 
       <div className="absolute top-3 right-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div data-testid={`match-score-${event.id}`}>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button data-testid={`match-score-${event.id}`} className="cursor-pointer">
               <MatchPill score={event.finalScore} size="sm" />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="left" className="max-w-xs bg-zinc-900 text-zinc-100 border-zinc-700 p-3" data-testid={`tooltip-match-${event.id}`}>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="left" className="max-w-xs bg-zinc-900 text-zinc-100 border-zinc-700 p-3 w-auto" data-testid={`tooltip-match-${event.id}`}>
             <div className="space-y-1.5 text-xs">
               {event.matchMathTooltip?.split("\n").map((line, i) => (
                 <p key={i} className={i === 0 ? "font-medium text-white" : "text-zinc-300"}>
@@ -299,8 +362,8 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
                 </p>
               ))}
             </div>
-          </TooltipContent>
-        </Tooltip>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-4 space-y-3">
@@ -366,20 +429,20 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
         )}
 
         {event.whyShort && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-start gap-2 text-xs text-white/50 cursor-default" data-testid={`why-${event.id}`}>
+          <Popover>
+            <PopoverTrigger asChild>
+              <div className="flex items-start gap-2 text-xs text-white/50 cursor-pointer" data-testid={`why-${event.id}`}>
                 <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
                 <span>{event.whyShort}</span>
                 <Info className="h-3 w-3 shrink-0 mt-0.5 text-white/30" />
               </div>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-sm bg-zinc-900 text-zinc-100 border-zinc-700 p-3" data-testid={`tooltip-why-${event.id}`}>
+            </PopoverTrigger>
+            <PopoverContent side="top" className="max-w-sm bg-zinc-900 text-zinc-100 border-zinc-700 p-3 w-auto" data-testid={`tooltip-why-${event.id}`}>
               <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">
                 {event.whyLong}
               </p>
-            </TooltipContent>
-          </Tooltip>
+            </PopoverContent>
+          </Popover>
         )}
 
         <div className="flex items-center gap-2 pt-1">

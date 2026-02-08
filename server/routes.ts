@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { buildTraitsFromSelections, generateClusters, computeMatchScore, computeItemMatchScore, computeHobbyMatch, getTraitsFromProfile } from "./taste-engine";
-import { TRAIT_AXES, type Domain, interactions, tasteProfiles } from "@shared/schema";
+import { TRAIT_AXES, type Domain, interactions, tasteProfiles, items as itemsTable } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { GARV_PROFILE } from "./seed";
 import { hybridRecommend, hybridSocialMatch, hybridEventScore, hybridHobbyScore } from "./hybrid-engine";
@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 function demoAuth(req: any, res: any, next: any) {
   if (process.env.DEMO_BYPASS_AUTH === "true") {
     if (!req.user) {
-      req.user = { claims: { sub: "seed-garv" } };
+      req.user = { claims: { sub: "49486139" } };
     }
     return next();
   }
@@ -126,13 +126,56 @@ export async function registerRoutes(
         console.log(`[demo/bootstrap] Existing profile, embedding status:`, embResult);
         return res.json(existing);
       }
+
+      const codingClubRow = await pool.query(`SELECT id FROM items WHERE title = 'Aggie Coding Club' LIMIT 1`);
+      const mainClubId = codingClubRow.rows[0]?.id || null;
+      await pool.query(
+        `UPDATE users SET grad_year = $1, class_standing = $2, main_club_item_id = $3 WHERE id = $4`,
+        [2027, "Junior", mainClubId, userId]
+      );
+
       const profile = await storage.upsertTasteProfile({
         userId,
         ...GARV_PROFILE,
       });
 
+      const allSeedItems = await pool.query("SELECT id, domain, title, tags FROM items");
+      const itemsByDomain = new Map<string, any[]>();
+      for (const item of allSeedItems.rows) {
+        const list = itemsByDomain.get(item.domain) || [];
+        list.push(item);
+        itemsByDomain.set(item.domain, list);
+      }
+      const demoItems = [
+        ...(itemsByDomain.get("academic") || []).slice(0, 3),
+        ...(itemsByDomain.get("professional") || []).slice(0, 3),
+        ...(itemsByDomain.get("sports") || []).slice(0, 2),
+        ...(itemsByDomain.get("volunteering") || []).slice(0, 1),
+      ];
+      for (const item of demoItems) {
+        await storage.createInteraction({
+          userId,
+          itemId: item.id,
+          domain: item.domain,
+          action: "love",
+          weight: 2.0,
+        });
+      }
+
       const embResult = await deriveEmbeddingFromProfile(userId);
+      await recomputeTasteEmbedding(userId);
       console.log(`[demo/bootstrap] New profile, embedding result:`, embResult);
+
+      const allEventRows = await pool.query("SELECT id FROM events ORDER BY date_time ASC");
+      const eventIds = allEventRows.rows.map((r: any) => r.id);
+      for (let i = 0; i < Math.min(eventIds.length, 18); i++) {
+        try {
+          const already = await storage.hasUserRsvpd(eventIds[i], userId);
+          if (!already) {
+            await storage.createEventRsvp({ eventId: eventIds[i], userId });
+          }
+        } catch (e) {}
+      }
 
       res.json(profile);
     } catch (error) {
@@ -193,6 +236,20 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error during onboarding:", error);
       res.status(500).json({ message: "Failed to complete onboarding" });
+    }
+  });
+
+  app.post("/api/onboarding/reset", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.upsertTasteProfile({
+        userId,
+        onboardingComplete: false,
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error resetting onboarding:", error);
+      res.status(500).json({ message: "Failed to reset onboarding" });
     }
   });
 
@@ -257,6 +314,124 @@ export async function registerRoutes(
           mutualsInClub.sort((a, b) => b.matchScore - a.matchScore);
         }
 
+        const clubDomain = r.item.domain || domain;
+        const mutualsCount = mutualsInClub.length;
+        const hasCf = r.cfScore > 0 && r.cfScore !== 50;
+        const hasNextMeeting = !!r.item.nextMeetingAt;
+        const meetingSoon = urgency.urgencyScore >= 50;
+
+        const userTraits = {
+          novelty: profile.traitNovelty ?? 0.5,
+          intensity: profile.traitIntensity ?? 0.5,
+          cozy: profile.traitCozy ?? 0.5,
+          strategy: profile.traitStrategy ?? 0.5,
+          social: profile.traitSocial ?? 0.5,
+          creativity: profile.traitCreativity ?? 0.5,
+          nostalgia: profile.traitNostalgia ?? 0.5,
+          adventure: profile.traitAdventure ?? 0.5,
+        };
+        const clubTraits = {
+          novelty: r.item.traitNovelty ?? 0.5,
+          intensity: r.item.traitIntensity ?? 0.5,
+          cozy: r.item.traitCozy ?? 0.5,
+          strategy: r.item.traitStrategy ?? 0.5,
+          social: r.item.traitSocial ?? 0.5,
+          creativity: r.item.traitCreativity ?? 0.5,
+          nostalgia: r.item.traitNostalgia ?? 0.5,
+          adventure: r.item.traitAdventure ?? 0.5,
+        };
+
+        const topUserTraits = Object.entries(userTraits)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([k]) => k);
+        const topClubTraits = Object.entries(clubTraits)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2)
+          .map(([k]) => k);
+        const overlappingTraits = topUserTraits.filter(t => topClubTraits.includes(t));
+
+        let whyShort = "";
+        if (clubDomain === "academic" || clubDomain === "professional") {
+          const relevantAxes = ["strategy", "intensity", "novelty"].filter(
+            t => userTraits[t as keyof typeof userTraits] >= 0.6 && clubTraits[t as keyof typeof clubTraits] >= 0.5
+          );
+          if (relevantAxes.length > 0 && mutualsCount > 0) {
+            whyShort = `Strong ${relevantAxes.join(" + ")} alignment + ${mutualsCount} similar students`;
+          } else if (relevantAxes.length > 0) {
+            whyShort = `Matches your ${relevantAxes.join(" + ")} profile`;
+          } else if (hasCf) {
+            whyShort = "Recommended — students with your Persona DNA saved this";
+          } else {
+            whyShort = r.vectorScore >= 70 ? "Strong ML-scored alignment to your interests" : "Aligns with your academic focus";
+          }
+        } else if (clubDomain === "social") {
+          const socialNote = userTraits.social >= 0.7 ? "High social-energy match" : "Good social alignment";
+          if (mutualsCount > 0) {
+            whyShort = `${socialNote} + ${mutualsCount} mutuals saved this club`;
+          } else if (hasCf) {
+            whyShort = `${socialNote} — popular with similar Persona DNA profiles`;
+          } else {
+            whyShort = socialNote;
+          }
+        } else if (clubDomain === "sports") {
+          const sportsAxes = ["intensity", "adventure"].filter(
+            t => userTraits[t as keyof typeof userTraits] >= 0.5
+          );
+          if (sportsAxes.length > 0) {
+            whyShort = `Matches your ${sportsAxes.join(" + ")} drive`;
+          } else {
+            whyShort = "Aligns with your active interests";
+          }
+          if (mutualsCount > 0) whyShort += ` + ${mutualsCount} mutuals`;
+        } else if (clubDomain === "volunteering") {
+          if (userTraits.social >= 0.6 || userTraits.cozy >= 0.6) {
+            whyShort = "Aligns with your community-service profile";
+          } else {
+            whyShort = "Matches your giving-back energy";
+          }
+          if (mutualsCount > 0) whyShort += ` + ${mutualsCount} similar students`;
+        } else {
+          if (overlappingTraits.length > 0) {
+            whyShort = `Matches your ${overlappingTraits.join(" + ")} energy`;
+          } else {
+            whyShort = r.vectorScore >= 70 ? "Strong persona alignment" : "Discover something new on campus";
+          }
+        }
+
+        if (meetingSoon && hasNextMeeting) {
+          whyShort += " — meeting this week";
+        }
+
+        const whyLongLines: string[] = [];
+        if (r.scoringMethod === "hybrid" || r.scoringMethod === "embedding") {
+          whyLongLines.push(`Your top traits (${topUserTraits.join(", ")}) ${overlappingTraits.length > 0 ? `overlap with this club's ${overlappingTraits.join(", ")} profile` : `complement this club's ${topClubTraits.join(", ")} focus`}.`);
+        } else {
+          whyLongLines.push(`Trait-based match: your ${topUserTraits.join(", ")} profile scored against this club's trait vector.`);
+        }
+        if (hasCf) {
+          whyLongLines.push("Community signal: students with similar Persona DNA embeddings liked/saved this club.");
+        }
+        if (mutualsCount > 0) {
+          whyLongLines.push(`${mutualsCount} ${mutualsCount === 1 ? "student" : "students"} with >65% taste match also engage with this club.`);
+        }
+        if (meetingSoon) {
+          whyLongLines.push(`Next meeting is ${urgency.urgencyLabel} — urgency signal boosted in sort.`);
+        }
+        const whyLong = whyLongLines.join(" ");
+
+        const matchMathLines: string[] = [];
+        if (r.scoringMethod === "hybrid") {
+          matchMathLines.push(`Score: ${r.hybridScore}% = vectorSim ${r.vectorScore}% × 0.55 + CF ${r.cfScore}% × 0.25 + traitExplain ${r.traitScore}% × 0.20`);
+        } else if (r.scoringMethod === "embedding") {
+          matchMathLines.push(`Score: ${r.hybridScore}% (vector similarity dominant, CF data unavailable)`);
+        } else {
+          matchMathLines.push(`Score: ${r.hybridScore}% (trait-based fallback)`);
+        }
+        matchMathLines.push("ML: MiniLM-L6-v2 text embeddings (384-dim) + cosine similarity between your Persona DNA and club embedding.");
+        matchMathLines.push(`scoringMethod: ${r.scoringMethod} | fallback: ${r.fallbackReason || "none"}`);
+        const matchMathTooltip = matchMathLines.join("\n");
+
         return {
           ...r.item,
           matchScore: r.hybridScore,
@@ -271,6 +446,9 @@ export async function registerRoutes(
           deadline: urgency.deadline,
           mutualsInClubCount: mutualsInClub.length,
           mutualsInClubPreview: mutualsInClub.slice(0, 3),
+          whyShort,
+          whyLong,
+          matchMathTooltip,
         };
       });
 
@@ -383,6 +561,176 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching social matches:", error);
       res.status(500).json({ message: "Failed to fetch matches" });
+    }
+  });
+
+  app.get("/api/friends", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const friendIds = await storage.getFriendIds(userId);
+      if (friendIds.length === 0) return res.json([]);
+
+      const myProfile = await storage.getTasteProfile(userId);
+      const myInteractions = await storage.getUserInteractions(userId);
+      const myRsvps = await storage.getUserEventRsvps(userId);
+      const myClubIds = new Set(myInteractions.filter(i => i.action === "like" || i.action === "love" || i.action === "save").map(i => i.itemId));
+      const myEventIds = new Set(myRsvps.map(r => r.eventId));
+
+      const allItems = await db.select().from(itemsTable);
+      const allEvents = await storage.getEvents();
+      const itemMap = new Map(allItems.map(i => [i.id, i]));
+      const eventMap = new Map(allEvents.map(e => [e.id, e]));
+
+      const friends = await Promise.all(friendIds.map(async (fid) => {
+        const user = await storage.getUser(fid);
+        if (!user) return null;
+        const profile = await storage.getTasteProfile(fid);
+        const friendInteractions = await storage.getUserInteractions(fid);
+        const friendRsvps = await storage.getUserEventRsvps(fid);
+        const friendClubIds = new Set(friendInteractions.filter(i => i.action === "like" || i.action === "love" || i.action === "save").map(i => i.itemId));
+        const friendEventIds = new Set(friendRsvps.map(r => r.eventId));
+
+        const commonClubs: string[] = [];
+        Array.from(friendClubIds).forEach(cid => {
+          if (myClubIds.has(cid)) {
+            const club = itemMap.get(cid);
+            if (club) commonClubs.push(club.title);
+          }
+        });
+
+        const commonEvents: string[] = [];
+        Array.from(friendEventIds).forEach(eid => {
+          if (myEventIds.has(eid)) {
+            const evt = eventMap.get(eid);
+            if (evt) commonEvents.push(evt.title);
+          }
+        });
+
+        return {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          profileImageUrl: user.profileImageUrl,
+          instagramUrl: user.instagramUrl,
+          phoneNumber: user.phoneNumber,
+          gradYear: user.gradYear,
+          classStanding: user.classStanding,
+          topClusters: profile?.topClusters || [],
+          commonClubs,
+          commonEvents,
+        };
+      }));
+
+      res.json(friends.filter(Boolean));
+    } catch (error) {
+      console.error("Error fetching friends:", error);
+      res.status(500).json({ message: "Failed to fetch friends" });
+    }
+  });
+
+  app.get("/api/friends/suggestions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const friendIds = await storage.getFriendIds(userId);
+      const friendSet = new Set([...friendIds, userId]);
+
+      const myProfile = await storage.getTasteProfile(userId);
+      if (!myProfile) return res.json([]);
+
+      const myInteractions = await storage.getUserInteractions(userId);
+      const myRsvps = await storage.getUserEventRsvps(userId);
+      const myClubIds = new Set(myInteractions.filter(i => i.action === "like" || i.action === "love" || i.action === "save").map(i => i.itemId));
+      const myEventIds = new Set(myRsvps.map(r => r.eventId));
+
+      const usersWithProfiles = await storage.getUsersWithProfiles(userId);
+      const allItems = await db.select().from(itemsTable);
+      const allEvents = await storage.getEvents();
+      const itemMap = new Map(allItems.map(i => [i.id, i]));
+      const eventMap = new Map(allEvents.map(e => [e.id, e]));
+
+      const suggestions = await Promise.all(
+        usersWithProfiles
+          .filter(({ user }) => !friendSet.has(user.id))
+          .map(async ({ user, profile }) => {
+            const hybridResult = hybridSocialMatch(myProfile, profile);
+
+            const friendInteractions = await storage.getUserInteractions(user.id);
+            const friendRsvps = await storage.getUserEventRsvps(user.id);
+            const friendClubIds = new Set(friendInteractions.filter(i => i.action === "like" || i.action === "love" || i.action === "save").map(i => i.itemId));
+            const friendEventIds = new Set(friendRsvps.map(r => r.eventId));
+
+            const commonClubs: string[] = [];
+            Array.from(friendClubIds).forEach(cid => {
+              if (myClubIds.has(cid)) {
+                const club = itemMap.get(cid);
+                if (club) commonClubs.push(club.title);
+              }
+            });
+
+            const commonEvents: string[] = [];
+            Array.from(friendEventIds).forEach(eid => {
+              if (myEventIds.has(eid)) {
+                const evt = eventMap.get(eid);
+                if (evt) commonEvents.push(evt.title);
+              }
+            });
+
+            const whyMatched: string[] = [];
+            if (hybridResult.hybridScore >= 75) whyMatched.push("High DNA compatibility");
+            else if (hybridResult.hybridScore >= 50) whyMatched.push("Good DNA alignment");
+            if (commonClubs.length > 0) whyMatched.push(`${commonClubs.length} shared club${commonClubs.length > 1 ? "s" : ""}`);
+            if (commonEvents.length > 0) whyMatched.push(`${commonEvents.length} shared event${commonEvents.length > 1 ? "s" : ""}`);
+            if (whyMatched.length === 0) whyMatched.push("Similar campus interests");
+
+            return {
+              id: user.id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              profileImageUrl: user.profileImageUrl,
+              instagramUrl: user.instagramUrl,
+              phoneNumber: user.phoneNumber,
+              gradYear: user.gradYear,
+              classStanding: user.classStanding,
+              matchScore: hybridResult.hybridScore,
+              scoringMethod: hybridResult.scoringMethod,
+              topClusters: profile.topClusters || [],
+              commonClubs,
+              commonEvents,
+              whyMatched,
+            };
+          })
+      );
+
+      suggestions.sort((a, b) => b.matchScore - a.matchScore);
+      res.json(suggestions);
+    } catch (error) {
+      console.error("Error fetching friend suggestions:", error);
+      res.status(500).json({ message: "Failed to fetch suggestions" });
+    }
+  });
+
+  app.post("/api/friends/:friendId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { friendId } = req.params;
+      if (userId === friendId) return res.status(400).json({ message: "Cannot friend yourself" });
+      const friendship = await storage.addFriend(userId, friendId);
+      res.json(friendship);
+    } catch (error) {
+      console.error("Error adding friend:", error);
+      res.status(500).json({ message: "Failed to add friend" });
+    }
+  });
+
+  app.delete("/api/friends/:friendId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { friendId } = req.params;
+      await storage.removeFriend(userId, friendId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing friend:", error);
+      res.status(500).json({ message: "Failed to remove friend" });
     }
   });
 
@@ -570,6 +918,310 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching hobbies:", error);
       res.status(500).json({ message: "Failed to fetch hobbies" });
+    }
+  });
+
+  app.get("/api/profile/:userId", demoAuth, async (req: any, res) => {
+    try {
+      const targetUserId = req.params.userId;
+      const targetUser = await storage.getUser(targetUserId);
+      if (!targetUser) return res.status(404).json({ message: "User not found" });
+      const targetProfile = await storage.getTasteProfile(targetUserId);
+      res.json({
+        id: targetUser.id,
+        firstName: targetUser.firstName,
+        lastName: targetUser.lastName,
+        profileImageUrl: targetUser.profileImageUrl,
+        gradYear: targetUser.gradYear,
+        classStanding: targetUser.classStanding,
+        mainClubItemId: targetUser.mainClubItemId,
+        topClusters: targetProfile?.topClusters || [],
+        traits: targetProfile ? {
+          novelty: targetProfile.traitNovelty ?? 0.5,
+          intensity: targetProfile.traitIntensity ?? 0.5,
+          cozy: targetProfile.traitCozy ?? 0.5,
+          strategy: targetProfile.traitStrategy ?? 0.5,
+          social: targetProfile.traitSocial ?? 0.5,
+          creativity: targetProfile.traitCreativity ?? 0.5,
+          nostalgia: targetProfile.traitNostalgia ?? 0.5,
+          adventure: targetProfile.traitAdventure ?? 0.5,
+        } : null,
+        onboardingComplete: targetProfile?.onboardingComplete ?? false,
+      });
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  app.get("/api/profile/:userId/main-club", demoAuth, async (req: any, res) => {
+    try {
+      const viewerId = req.user.claims.sub;
+      const targetUserId = req.params.userId;
+      const targetUser = await storage.getUser(targetUserId);
+      if (!targetUser || !targetUser.mainClubItemId) {
+        return res.json(null);
+      }
+
+      const club = await storage.getItemById(targetUser.mainClubItemId);
+      if (!club) return res.json(null);
+
+      const viewerProfile = await storage.getTasteProfile(viewerId);
+      let matchScore = 50;
+      let whyShort = "Your main club";
+      let whyLong = "This is the club this user identifies with most on campus.";
+      let matchMathTooltip = "No scoring data available";
+      let scoringMethod = "none";
+
+      if (viewerProfile) {
+        const { recommendations } = await hybridRecommend(viewerProfile, [club], viewerId, club.domain as any);
+        if (recommendations.length > 0) {
+          const r = recommendations[0];
+          matchScore = r.hybridScore;
+          scoringMethod = r.scoringMethod;
+
+          const viewerTraits = {
+            novelty: viewerProfile.traitNovelty ?? 0.5,
+            intensity: viewerProfile.traitIntensity ?? 0.5,
+            cozy: viewerProfile.traitCozy ?? 0.5,
+            strategy: viewerProfile.traitStrategy ?? 0.5,
+            social: viewerProfile.traitSocial ?? 0.5,
+            creativity: viewerProfile.traitCreativity ?? 0.5,
+            nostalgia: viewerProfile.traitNostalgia ?? 0.5,
+            adventure: viewerProfile.traitAdventure ?? 0.5,
+          };
+          const topTraits = Object.entries(viewerTraits).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k);
+
+          whyShort = matchScore >= 75
+            ? `Strong alignment with your ${topTraits.slice(0, 2).join(" + ")} profile`
+            : matchScore >= 50
+              ? `Good fit — overlaps with your ${topTraits[0]} interests`
+              : "Explore a different perspective on campus";
+
+          const clubTraits = {
+            novelty: club.traitNovelty ?? 0.5,
+            intensity: club.traitIntensity ?? 0.5,
+            cozy: club.traitCozy ?? 0.5,
+            strategy: club.traitStrategy ?? 0.5,
+            social: club.traitSocial ?? 0.5,
+            creativity: club.traitCreativity ?? 0.5,
+            nostalgia: club.traitNostalgia ?? 0.5,
+            adventure: club.traitAdventure ?? 0.5,
+          };
+          const topClubTraits = Object.entries(clubTraits).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => k);
+          const overlap = topTraits.filter(t => topClubTraits.includes(t));
+
+          whyLong = `Your top traits (${topTraits.join(", ")}) ${overlap.length > 0 ? `overlap with this club's ${overlap.join(", ")} focus` : `complement this club's ${topClubTraits.join(", ")} strengths`}. ${r.scoringMethod === "hybrid" || r.scoringMethod === "embedding" ? "ML embedding similarity confirms alignment." : "Trait-based analysis used."}`;
+
+          const mathLines: string[] = [];
+          if (r.scoringMethod === "hybrid") {
+            mathLines.push(`Score: ${r.hybridScore}% = vectorSim ${r.vectorScore}% x 0.55 + CF ${r.cfScore}% x 0.25 + traitExplain ${r.traitScore}% x 0.20`);
+          } else if (r.scoringMethod === "embedding") {
+            mathLines.push(`Score: ${r.hybridScore}% (vector similarity dominant)`);
+          } else {
+            mathLines.push(`Score: ${r.hybridScore}% (trait-based fallback)`);
+          }
+          mathLines.push("ML: MiniLM-L6-v2 (384-dim) cosine similarity");
+          mathLines.push(`scoringMethod: ${r.scoringMethod} | fallback: ${r.fallbackReason || "none"}`);
+          matchMathTooltip = mathLines.join("\n");
+        }
+      }
+
+      res.json({
+        ...club,
+        matchScore,
+        whyShort,
+        whyLong,
+        matchMathTooltip,
+        scoringMethod,
+        memberStatus: targetUserId === viewerId ? "Member" : "Member",
+      });
+    } catch (error) {
+      console.error("Error fetching main club:", error);
+      res.status(500).json({ message: "Failed to fetch main club" });
+    }
+  });
+
+  app.get("/api/profile/:userId/event-history", demoAuth, async (req: any, res) => {
+    try {
+      const viewerId = req.user.claims.sub;
+      const targetUserId = req.params.userId;
+      const mode = (req.query.mode as string) || "all";
+
+      const targetRsvps = await storage.getUserEventRsvps(targetUserId);
+      let eventIds = targetRsvps.map(r => r.eventId);
+
+      if (mode === "common" && viewerId !== targetUserId) {
+        const viewerRsvps = await storage.getUserEventRsvps(viewerId);
+        const viewerEventIds = new Set(viewerRsvps.map(r => r.eventId));
+        eventIds = eventIds.filter(id => viewerEventIds.has(id));
+      }
+
+      const uniqueIds = Array.from(new Set(eventIds));
+      const viewerProfile = await storage.getTasteProfile(viewerId);
+
+      const results = [];
+      for (const eventId of uniqueIds) {
+        const event = await storage.getEventById(eventId);
+        if (!event) continue;
+
+        let matchScore = 50;
+        let whyShort = "You attended this event";
+        let whyLong = "Event match based on your taste profile.";
+        let matchMathTooltip = "No scoring data";
+        let scoringMethod = "none";
+
+        if (viewerProfile) {
+          const result = hybridEventScore(viewerProfile, event, null, null);
+          matchScore = result.hybridScore;
+          scoringMethod = result.scoringMethod;
+
+          const viewerTraits = {
+            novelty: viewerProfile.traitNovelty ?? 0.5,
+            intensity: viewerProfile.traitIntensity ?? 0.5,
+            cozy: viewerProfile.traitCozy ?? 0.5,
+            strategy: viewerProfile.traitStrategy ?? 0.5,
+            social: viewerProfile.traitSocial ?? 0.5,
+            creativity: viewerProfile.traitCreativity ?? 0.5,
+            nostalgia: viewerProfile.traitNostalgia ?? 0.5,
+            adventure: viewerProfile.traitAdventure ?? 0.5,
+          };
+          const topTraits = Object.entries(viewerTraits).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k);
+
+          whyShort = matchScore >= 75
+            ? `Strong persona match — ${topTraits[0]} + ${topTraits[1]} alignment`
+            : matchScore >= 50
+              ? `Good fit for your ${topTraits[0]} energy`
+              : "Broadening your campus experience";
+
+          whyLong = `Your top traits (${topTraits.join(", ")}) scored against this event's profile. ${result.scoringMethod === "hybrid" || result.scoringMethod === "embedding" ? "ML embedding similarity (MiniLM-L6-v2) drove the ranking." : "Trait-based scoring used."} Match reflects how well this event aligns with your Persona DNA.`;
+
+          const mathLines: string[] = [];
+          if (result.scoringMethod === "hybrid" || result.scoringMethod === "embedding") {
+            mathLines.push(`Score: ${matchScore}% (embedding cosine similarity)`);
+          } else {
+            mathLines.push(`Score: ${matchScore}% (trait-based)`);
+          }
+          mathLines.push("ML: MiniLM-L6-v2 (384-dim) + cosine similarity");
+          mathLines.push(`scoringMethod: ${scoringMethod}`);
+          matchMathTooltip = mathLines.join("\n");
+        }
+
+        results.push({
+          eventId: event.id,
+          title: event.title,
+          dateTime: event.dateTime,
+          location: event.location,
+          imageUrl: event.imageUrl,
+          tags: event.tags,
+          category: event.category,
+          matchScore,
+          whyShort,
+          whyLong,
+          matchMathTooltip,
+          scoringMethod,
+        });
+      }
+
+      results.sort((a, b) => {
+        const dateA = a.dateTime ? new Date(a.dateTime).getTime() : 0;
+        const dateB = b.dateTime ? new Date(b.dateTime).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error fetching event history:", error);
+      res.status(500).json({ message: "Failed to fetch event history" });
+    }
+  });
+
+  app.get("/api/profile/:userId/mutuals", demoAuth, async (req: any, res) => {
+    try {
+      const viewerId = req.user.claims.sub;
+      const targetUserId = req.params.userId;
+
+      if (viewerId === targetUserId) {
+        return res.json([]);
+      }
+
+      const viewerProfile = await storage.getTasteProfile(viewerId);
+      const targetProfile = await storage.getTasteProfile(targetUserId);
+      if (!viewerProfile || !targetProfile) return res.json([]);
+
+      const viewerRsvps = await storage.getUserEventRsvps(viewerId);
+      const targetRsvps = await storage.getUserEventRsvps(targetUserId);
+      const viewerEventIds = new Set(viewerRsvps.map(r => r.eventId));
+      const targetEventIds = new Set(targetRsvps.map(r => r.eventId));
+
+      const allUsersWithProfiles = await storage.getUsersWithProfiles(viewerId);
+      const mutuals: {
+        userId: string;
+        name: string;
+        profileImageUrl: string | null;
+        matchScore: number;
+        commonEventsCount: number;
+        topSharedTraits: string[];
+      }[] = [];
+
+      for (const { user, profile } of allUsersWithProfiles) {
+        if (user.id === viewerId || user.id === targetUserId) continue;
+
+        const viewerMatch = hybridSocialMatch(viewerProfile, profile);
+        const targetMatch = hybridSocialMatch(targetProfile, profile);
+
+        if (viewerMatch.hybridScore < 60 || targetMatch.hybridScore < 60) continue;
+
+        const userRsvps = await storage.getUserEventRsvps(user.id);
+        const userEventIds = new Set(userRsvps.map(r => r.eventId));
+
+        const sharedWithViewer = Array.from(viewerEventIds).filter(id => userEventIds.has(id)).length;
+        const sharedWithTarget = Array.from(targetEventIds).filter(id => userEventIds.has(id)).length;
+
+        if (sharedWithViewer === 0 && sharedWithTarget === 0) continue;
+
+        const viewerTraits = {
+          novelty: viewerProfile.traitNovelty ?? 0.5,
+          intensity: viewerProfile.traitIntensity ?? 0.5,
+          cozy: viewerProfile.traitCozy ?? 0.5,
+          strategy: viewerProfile.traitStrategy ?? 0.5,
+          social: viewerProfile.traitSocial ?? 0.5,
+          creativity: viewerProfile.traitCreativity ?? 0.5,
+          nostalgia: viewerProfile.traitNostalgia ?? 0.5,
+          adventure: viewerProfile.traitAdventure ?? 0.5,
+        };
+        const userTraits = {
+          novelty: profile.traitNovelty ?? 0.5,
+          intensity: profile.traitIntensity ?? 0.5,
+          cozy: profile.traitCozy ?? 0.5,
+          strategy: profile.traitStrategy ?? 0.5,
+          social: profile.traitSocial ?? 0.5,
+          creativity: profile.traitCreativity ?? 0.5,
+          nostalgia: profile.traitNostalgia ?? 0.5,
+          adventure: profile.traitAdventure ?? 0.5,
+        };
+
+        const sharedTraits = Object.keys(viewerTraits).filter(key => {
+          const vt = viewerTraits[key as keyof typeof viewerTraits];
+          const ut = userTraits[key as keyof typeof userTraits];
+          return Math.abs(vt - ut) < 0.2 && vt >= 0.6;
+        }).slice(0, 3);
+
+        mutuals.push({
+          userId: user.id,
+          name: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          profileImageUrl: user.profileImageUrl,
+          matchScore: viewerMatch.hybridScore,
+          commonEventsCount: sharedWithViewer + sharedWithTarget,
+          topSharedTraits: sharedTraits,
+        });
+      }
+
+      mutuals.sort((a, b) => b.matchScore - a.matchScore);
+      res.json(mutuals.slice(0, 6));
+    } catch (error) {
+      console.error("Error fetching mutuals:", error);
+      res.status(500).json({ message: "Failed to fetch mutuals" });
     }
   });
 
@@ -936,7 +1588,7 @@ export async function registerRoutes(
 
         const matchMathLines: string[] = [
           `Score: ${finalScore}% (personaScore ${personaScore}% × 0.45 + socialScore ${socialScore}% × 0.30 + urgencyScore ${urgencyScore}% × 0.25)`,
-          `Persona: ML text embeddings (MiniLM-L6-v2, 384-dim) → cosine similarity between your Taste DNA and event embedding.`,
+          `Persona: ML text embeddings (MiniLM-L6-v2, 384-dim) → cosine similarity between your Persona DNA and event embedding.`,
           `Social: avg attendee compatibility (${socialScoreCount} checked) + friend bonus (${mutualFriendsGoingCount} mutuals).`,
         ];
         if (scoringMethod === "trait_fallback") {
@@ -990,6 +1642,89 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/explore/map-data", demoAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const profile = await storage.getTasteProfile(userId);
+
+      const allEvents = await storage.getEvents();
+      const allItems = await db.select().from(itemsTable);
+
+      const now = new Date();
+      const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+      const upcomingEvents = allEvents.filter(e => {
+        if (!e.locationLat || !e.locationLng) return false;
+        if (!e.dateTime) return true;
+        const dt = new Date(e.dateTime);
+        return dt >= now && dt <= in48h;
+      });
+
+      const eventMarkers = await Promise.all(upcomingEvents.map(async (event) => {
+        const rsvps = await storage.getEventRsvps(event.id);
+        const rsvpCount = rsvps.length;
+
+        let personaScore = 50;
+        if (profile && isValidEmbedding(profile.embedding) && isValidEmbedding(event.embedding)) {
+          const sim = computeCosineSimilarity(profile.embedding!, event.embedding!);
+          personaScore = cosineSimilarityToScore(sim);
+        }
+
+        const friendPreviews: { id: string; firstName: string | null; profileImageUrl: string | null }[] = [];
+        if (profile && isValidEmbedding(profile.embedding)) {
+          for (const rsvp of rsvps.slice(0, 5)) {
+            if (rsvp.userId === userId) continue;
+            const otherProfile = await storage.getTasteProfile(rsvp.userId);
+            if (otherProfile && isValidEmbedding(otherProfile.embedding)) {
+              const sim = computeCosineSimilarity(profile.embedding!, otherProfile.embedding!);
+              if (cosineSimilarityToScore(sim) > 65) {
+                const u = await storage.getUser(rsvp.userId);
+                if (u) friendPreviews.push({ id: u.id, firstName: u.firstName, profileImageUrl: u.profileImageUrl });
+              }
+            }
+          }
+        }
+
+        return {
+          type: "event" as const,
+          id: event.id,
+          title: event.title,
+          category: event.category,
+          location: event.location,
+          locationLat: event.locationLat,
+          locationLng: event.locationLng,
+          dateTime: event.dateTime,
+          rsvpCount,
+          personaScore,
+          isDeal: event.isDeal || false,
+          priceInfo: event.priceInfo,
+          friendsGoing: friendPreviews,
+          heatIntensity: Math.min(1, (rsvpCount + 5) / 50),
+        };
+      }));
+
+      const clubMarkers = allItems
+        .filter(item => item.locationLat && item.locationLng)
+        .map(item => ({
+          type: "club" as const,
+          id: item.id,
+          title: item.title,
+          domain: item.domain,
+          locationLat: item.locationLat,
+          locationLng: item.locationLng,
+          meetingLocation: item.meetingLocation,
+          meetingDay: item.meetingDay,
+          meetingTime: item.meetingTime,
+          nextMeetingAt: item.nextMeetingAt,
+        }));
+
+      res.json({ events: eventMarkers, clubs: clubMarkers });
+    } catch (error) {
+      console.error("Error fetching map data:", error);
+      res.status(500).json({ message: "Failed to fetch map data" });
+    }
+  });
+
   app.get("/api/events/:id/attendee-matches", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -1030,7 +1765,7 @@ export async function registerRoutes(
         }
 
         const whyWeMatch = matchPercent >= 80
-          ? `Strong taste alignment - your Taste DNA profiles deeply resonate across multiple dimensions`
+          ? `Strong taste alignment - your Persona DNA profiles deeply resonate across multiple dimensions`
           : matchPercent >= 60
           ? `Good compatibility - you share similar preferences in key areas`
           : `Some shared interests with complementary differences`;
@@ -1114,7 +1849,7 @@ export async function registerRoutes(
 
       let explanation = "";
       if (embeddingMatchPercent >= 85 && explicitOverlapPercent < 10) {
-        explanation = `High match (${embeddingMatchPercent}%) despite low explicit overlap (${explicitOverlapPercent}%) because your Taste DNA vectors are semantically aligned. You both gravitate toward similar themes (${top3SharedThemes.join(", ")}) even though you haven't interacted with the same specific items. This proves the embedding model captures deep taste patterns beyond surface-level item overlap.`;
+        explanation = `High match (${embeddingMatchPercent}%) despite low explicit overlap (${explicitOverlapPercent}%) because your Persona DNA vectors are semantically aligned. You both gravitate toward similar themes (${top3SharedThemes.join(", ")}) even though you haven't interacted with the same specific items. This proves the embedding model captures deep taste patterns beyond surface-level item overlap.`;
       } else if (embeddingMatchPercent >= 75) {
         explanation = `Strong embedding alignment (${embeddingMatchPercent}%) with ${explicitOverlapPercent}% explicit overlap. Your taste profiles share deep semantic structure around themes like ${top3SharedThemes.join(", ")}.`;
       } else {
@@ -1225,9 +1960,15 @@ export async function registerRoutes(
         if (!existingUser) {
           await pool.query(
             `INSERT INTO users (id, email, first_name, last_name) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
-            [userId, "demo@persona.app", "Demo", "User"]
+            [userId, "demo@persona.app", "Garv", "Puri"]
           );
         }
+        const codingClubRow = await pool.query(`SELECT id FROM items WHERE title = 'Aggie Coding Club' LIMIT 1`);
+        const mainClubId = codingClubRow.rows[0]?.id || null;
+        await pool.query(
+          `UPDATE users SET grad_year = $1, class_standing = $2, main_club_item_id = $3 WHERE id = $4`,
+          [2027, "Junior", mainClubId, userId]
+        );
         existingProfile = await storage.upsertTasteProfile({ userId, ...GARV_PROFILE });
       }
       const demoItems = [

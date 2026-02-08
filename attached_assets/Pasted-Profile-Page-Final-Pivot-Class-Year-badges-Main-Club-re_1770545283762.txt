@@ -1,0 +1,220 @@
+Profile Page Final Pivot (Class/Year badges, Main Club, remove Collection, Event History + Mutuals + Common Events)
+
+Goal: Update ONLY the Profile page (My DNA / profile view). Keep the existing UI style and structure (glassy cards, spacing, typography). Do NOT redesign the whole page. Do NOT change other tabs.
+
+A) Header: add “Class of ’27” + “Junior” badges to the right of the name
+
+On the profile header where the user’s name (“Garv Puri”) is shown:
+
+Keep the trait chips under the name exactly as-is.
+
+Add two small pill/box badges directly to the right of the name, stacked vertically:
+
+Top: Class of ’27
+
+Bottom: Junior
+
+Same translucent style as existing chips/cards. Small and clean.
+
+Data requirement:
+
+Add fields to user profile storage (prefer users table):
+
+gradYear (int, e.g., 2027)
+
+classStanding (text, e.g., “Junior”)
+
+Seed demo users:
+
+Garv: gradYear 2027, classStanding “Junior”
+
+Andy Chen: gradYear 2026 or 2027, classStanding “Senior” or “Junior” (make it different)
+
+B) Replace “myDNA Top 3” with “Main Club” (critical change)
+
+We are retconning “myDNA Top 3”. Replace that entire card/section with a new card:
+
+New section title: Main Club
+Purpose: show the primary club the user associates with (identity + career alignment)
+add a placeholder stock image for whatever club it is in the backdrop of whatever info im about to say below:
+
+Card content (use existing card layout):
+
+Club name (large)
+
+One-line “why” (AI-generated short line)
+
+Meeting info (next meeting + location)
+
+Links row: signup/website + Instagram (clickable)
+
+Optional small badge: domain/category (academic/professional/social/etc)
+
+Optional small badge: member status (“Member”, “Officer”, “New Member”) — demo-only is fine
+
+How to pick Main Club:
+
+Add a new field on the user profile:
+
+mainClubItemId (foreign-key-like reference to an item that represents a club)
+
+Auto-fill seeded demo:
+
+Garv main club: e.g., “Aggie Coding Club”
+
+Andy main club: e.g., “TAMU Data Science Society” (must be different)
+
+AI/ML linkage (must be judge-defensible):
+
+For the main club card, return:
+
+matchScore, matchMathTooltip
+
+whyShort, whyLong
+
+Reuse your existing hybrid/embedding scoring + explainability pipeline.
+
+Backend endpoint:
+
+GET /api/profile/:userId/main-club
+
+Returns the club item + fields above + AI explainability strings.
+
+C) Remove “My Collection” completely
+
+Delete/remove the “My Collection” section cleanly from the Profile page.
+
+No empty spacing, no placeholder text. Just remove the card.
+
+D) Replace “Gallery (Hobby Tags)” with “Event History”
+
+Remove/replace the entire Gallery section.
+
+New section title: Event History
+Behavior:
+
+Show a list/cards of events the user has attended (for demo: RSVP’d “going” counts as attended).
+
+Sort: most recent first (or upcoming first—pick one and be consistent).
+
+Each event row/card shows:
+
+Event title
+
+Date/time + location
+
+Tags
+
+Match % badge
+
+Short AI reason line
+
+Tooltip requirements (judge-facing):
+
+Hovering the match % badge shows matchMathTooltip (the actual scoring math / ML breakdown)
+
+Hovering the AI reason line shows a 3–4 line whyLong explanation grounded in onboarding + embeddings
+
+Backend endpoint:
+
+GET /api/profile/:userId/event-history
+
+Returns: [{ eventId, title, dateTime, location, imageUrl, tags, matchScore, whyShort, whyLong, matchMathTooltip }]
+
+IMPORTANT: matchScore/why must be computed using the viewer’s persona vs event (not just static).
+
+E) When viewing someone else’s profile (Andy Chen demo): add Common/All toggle for Event History
+
+If the viewer is looking at another user’s profile:
+
+In Event History section, add a toggle:
+
+Common → events both viewer and profile owner attended
+
+All → all events attended by profile owner
+
+Default: Common
+
+Backend support:
+
+GET /api/profile/:userId/event-history?mode=common|all
+
+mode=common computes intersection via RSVP table.
+
+F) Add “Mutuals” section ONLY on other people’s profiles
+
+When viewing Andy Chen (or any non-self profile):
+
+Show a new section titled: Mutuals
+
+Display a small list (top 6) with avatar + name (+ optional match % badge)
+
+Do NOT show Mutuals on Garv’s own profile.
+
+How to compute mutuals without a friends table:
+
+Use your existing compatibility/embedding match logic + attendance:
+
+Define “friend-like” as: high compatibility AND at least 1 shared attended event (or 2 if you want stricter).
+
+Mutuals between viewer and Andy are users who satisfy that rule with both.
+
+Backend endpoint:
+
+GET /api/profile/:userId/mutuals
+
+Returns [{ userId, name, profileImageUrl, matchScore, commonEventsCount, topSharedTraits }]
+
+G) Frontend wiring rules (must follow)
+
+Do NOT rebuild navigation.
+
+Keep the existing Profile page component and structure:
+
+Header: add gradYear + classStanding badges
+
+Replace myDNA Top 3 → Main Club card
+
+Remove My Collection
+
+Replace Gallery → Event History
+
+On other profiles: add Common/All toggle + Mutuals section
+
+Demo requirement:
+
+Ensure Andy Chen profile is actually viewable from Friends section and renders with the same UI (but different theme is allowed).
+
+H) Acceptance checklist (must pass)
+
+Garv profile:
+
+Name + right-side stacked badges (Class of ’27 / Junior)
+
+Trait chips unchanged
+
+Main Club card shows Garv’s seeded club
+
+My Collection gone
+
+Gallery replaced by Event History
+
+No Mutuals section
+
+Andy profile:
+
+Same UI structure + different theme ok
+
+Main Club shows Andy’s different seeded club
+
+Event History shows toggle (Common/All)
+
+Mutuals section visible
+
+Common shows only shared events with Garv
+
+Tooltips:
+
+Hover match badge → shows scoring math / ML breakdown
+
+Hover AI line → shows deeper 3–4 line explanation

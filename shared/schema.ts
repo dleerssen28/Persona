@@ -67,6 +67,8 @@ export const items = pgTable("items", {
   instagramUrl: text("instagram_url"),
   dues: text("dues"),
   duesDeadline: timestamp("dues_deadline"),
+  locationLat: doublePrecision("location_lat"),
+  locationLng: doublePrecision("location_lng"),
 }, (table) => [
   index("items_domain_idx").on(table.domain),
 ]);
@@ -162,12 +164,23 @@ export const eventRsvps = pgTable("event_rsvps", {
   index("event_rsvps_user_idx").on(table.userId),
 ]);
 
+export const friendships = pgTable("friendships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  friendId: varchar("friend_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("friendships_user_idx").on(table.userId),
+  index("friendships_friend_idx").on(table.friendId),
+]);
+
 export const insertTasteProfileSchema = createInsertSchema(tasteProfiles).omit({ id: true, updatedAt: true, embedding: true, embeddingUpdatedAt: true });
 export const insertItemSchema = createInsertSchema(items).omit({ id: true, embedding: true, embeddingUpdatedAt: true });
 export const insertInteractionSchema = createInsertSchema(interactions).omit({ id: true, createdAt: true });
 export const insertHobbySchema = createInsertSchema(hobbies).omit({ id: true, embedding: true, embeddingUpdatedAt: true });
 export const insertEventSchema = createInsertSchema(events).omit({ id: true, embedding: true, embeddingUpdatedAt: true });
 export const insertEventRsvpSchema = createInsertSchema(eventRsvps).omit({ id: true, createdAt: true });
+export const insertFriendshipSchema = createInsertSchema(friendships).omit({ id: true, createdAt: true });
 
 export type TasteProfile = typeof tasteProfiles.$inferSelect;
 export type InsertTasteProfile = z.infer<typeof insertTasteProfileSchema>;
@@ -182,6 +195,8 @@ export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type EventRsvp = typeof eventRsvps.$inferSelect;
 export type InsertEventRsvp = z.infer<typeof insertEventRsvpSchema>;
+export type Friendship = typeof friendships.$inferSelect;
+export type InsertFriendship = z.infer<typeof insertFriendshipSchema>;
 
 export const DOMAINS = ["academic", "professional", "social", "sports", "volunteering"] as const;
 export type Domain = typeof DOMAINS[number];

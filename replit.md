@@ -1,7 +1,7 @@
 # Persona
 
 ## Overview
-Persona is an AI-powered campus clubs discovery platform for TAMU that builds a "Taste DNA" for every student across 5 domains: academic, professional, social, sports, and volunteering. It uses local transformer embeddings (all-MiniLM-L6-v2, 384-dim) to match students to clubs, recommend clubs, and discover club events - all with explainable "why" reasoning.
+Persona is an AI-powered campus clubs discovery platform for TAMU that builds a "Persona DNA" for every student across 5 domains: academic, professional, social, sports, and volunteering. It uses local transformer embeddings (all-MiniLM-L6-v2, 384-dim) to match students to clubs, recommend clubs, and discover club events - all with explainable "why" reasoning.
 
 ## Tech Stack
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
@@ -14,14 +14,17 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 ## Architecture
 
 ### Navigation
-- Bottom navigation bar (mobile-style) with 4 tabs: My DNA, Clubs, Events, Friends
+- Bottom navigation bar (mobile-style) with 5 tabs: My DNA, Clubs, Explore, Events, Friends
 - No sidebar - uses `BottomNav` component fixed at bottom of screen
 
 ### Pages
-- `/` - Landing page (unauthenticated) / Profile page (authenticated)
+- `/` - Landing page (unauthenticated) / Profile page (authenticated, own profile)
+- `/profile/:userId` - View another user's profile (class/year badges, Main Club, Event History, Mutuals)
 - `/recommendations` - Club recommendations across 5 campus domains
+- `/explore` - Full-screen topographical map (Leaflet + CartoDB dark tiles) centered on TAMU MSC (30.6187, -96.3365). Shows events within 48h as category-coded markers with heat map overlay, clubs as domain-coded markers (toggled via button), popups with details + friend avatars + Google Maps links, and a color-coded legend.
 - `/events` - Event discovery with persona+social+urgency scoring
-- `/social` - Social matching with compatibility scores
+- `/social` - Social matching with compatibility scores + "View Profile" links to /profile/:userId
+- `/about` - About / How It Works page (TIDAL summary, interdisciplinary design, AI/ML explanation with code snippets). Opened by clicking the Persona logo in the header.
 
 ### Domains (Campus)
 - `academic` - Academic clubs (IEEE, Coding Club, AI/ML, Research, etc.)
@@ -30,18 +33,20 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `sports` - Club sports (Soccer, Climbing, Basketball, Pickleball, etc.)
 - `volunteering` - Service organizations (Habitat, Big Event, Camp Kesem, etc.)
 
-### Profile Page (redesigned)
+### Profile Page (redesigned, supports own + other profiles)
 - Full-screen themed background (Oceanic, Aurora, Ember, or custom image)
 - Cover banner uses theme image with gradient overlay
-- Avatar + name + cluster badges
-- Settings menu (gear icon, top-right) with:
-  - Theme switcher (3 presets + custom image upload)
-  - Edit Layout toggle (section reordering)
+- Avatar + name + class standing badge + grad year badge + cluster badges
+- Users table: gradYear, classStanding, mainClubItemId fields
+- **Own Profile** (`/`): Settings menu (gear icon), theme switcher, layout editor
+- **Other Profile** (`/profile/:userId`): Back button, Common/All event toggle, Mutuals section
 - Glassy see-through sections with backdrop-blur-xl:
   - Top 3 Traits: highest scoring personality traits
-  - myDNA Top 3: top club matches
-  - Taste DNA Radar: full radar chart + bar breakdown
+  - Main Club: user's primary club with hybrid ML match score + judge tooltips
+  - Event History: attended events list with ML match scores (Common/All toggle for other profiles)
+  - Persona DNA Radar: full radar chart + bar breakdown
   - Gallery (Hobby Tags): combined hobby images + vertical reel cards with tags
+  - Mutual Connections: shared high-match users between viewer and target (other profiles only)
 - Theme images stored in `client/src/assets/images/theme-*.png`
 
 ### API Endpoints
@@ -52,6 +57,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `POST /api/interactions` - Record user interaction (like/love/skip/save)
 - `GET /api/social/matches` - Get matched users with scores
 - `GET /api/explore/hobbies` - Get hobby recommendations
+- `GET /api/explore/map-data` - Map data: events (48h window) + clubs with locations, friend overlays, RSVP counts, persona scores
 - `GET /api/events/for-you` - Personalized events: finalScore = 0.45*personaScore + 0.30*socialScore + 0.25*urgencyScore
 - `POST /api/demo/bootstrap` - Auto-create demo profile for authenticated user
 - `POST /api/demo/reset` - Reset demo state (dev-only auth bypass)
@@ -61,6 +67,10 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `GET /api/debug/embedding-similarity-sanity` - Per-domain cosine similarity proof
 - `GET /api/debug/match-proof/:userId` - Cold-start matching proof
 - `POST /api/admin/backfill-embeddings` - Generate missing embeddings + recompute user profiles
+- `GET /api/profile/:userId` - Get user profile data (traits, clusters, class/year)
+- `GET /api/profile/:userId/main-club` - Get user's main club with hybrid ML match score for viewer
+- `GET /api/profile/:userId/event-history?mode=all|common` - Event history with ML scores (common = shared events with viewer)
+- `GET /api/profile/:userId/mutuals` - Mutual connections (users matching both viewer and target at >60%)
 
 ### Hybrid AI/ML Engine (Embeddings-First)
 - **Embeddings-First Architecture**: ML drives ranking; traits only explain. Fallback to traits only if embeddings missing.

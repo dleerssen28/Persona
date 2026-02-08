@@ -1,0 +1,158 @@
+Create About Page (Opened by Clicking the Persona Logo)
+
+When the user clicks on the Persona logo in the header (top-left of the app), the page should open to a clean "About" section that answers these key points:
+
+TIDAL Evaluation — Why Persona perfectly aligns with the TIDAL rubric.
+
+Interdisciplinary Approach — How psychology and other disciplines inform the app design.
+
+AI/ML Implementation — A clear explanation of how we use AI/ML and why it’s real.
+
+1. Page layout
+
+Header: “About / How It Works”
+
+Add a Back button at the top-left of the page that routes the user back to the homepage or last visited page.
+
+The page should have two main sections:
+
+TIDAL Summary (summary of how we fill TIDAL)
+
+Interdisciplinary & AI/ML Explanation (detailed explanation of interdisciplinary aspects and how AI/ML is used in simple + technical terms)
+
+2. TIDAL Summary (at the top of the page, right under the header)
+
+Add a glass card titled: “TIDAL Summary”
+
+This will be a quick summary in bullet points that judges can quickly scan to understand how Persona fits TIDAL.
+
+TIDAL Summary:
+
+T – Technical Depth
+We built a sophisticated recommendation engine using transformer embeddings (via @xenova/transformers) and hybrid scoring (combining embeddings, collaborative filtering, and trait-based explanations). No basic rule-based matching—we calculate fit using real ML.
+Proof: Recommendations, AI-based scoring, personalized suggestions.
+
+I – Interdisciplinary Thinking
+Persona integrates psychology, sociology, behavioral economics, human-computer interaction, and data engineering to improve how students discover and join communities.
+Proof: Trait-based user profiles (psychology), friend/mutuals match (sociology), urgency and motivation (behavioral economics), explainable AI (HCI), structured campus data (data engineering).
+
+D – Design & Usability
+Explainability first: Persona’s AI doesn’t just give recommendations, it explains why the app suggests a particular event, club, or person, using easy-to-understand tooltips.
+Proof: Hoverable AI match explanations, intuitive UI design, and personalized event sorting.
+
+A – Authentic Problem
+Students miss out on meaningful campus opportunities because discovery is fragmented (Instagram chaos, missed deadlines). Persona solves this by consolidating campus events and clubs with smart, predictive matching.
+Proof: Urgency filters, recommended clubs, and social matchmaking based on user persona.
+
+L – Long-Term Impact
+Persona can scale to other colleges and universities, democratizing how students connect with their communities and streamlining campus involvement.
+Proof: Scalable recommendation engine, diverse set of clubs/events, user-tailored recommendations.
+
+3. Interdisciplinary & AI/ML Explanation (Full Section, Below TIDAL)
+
+This is the main section where we go into the specifics of how interdisciplinary design and AI/ML power the app.
+
+Glass card titled: "Interdisciplinary & AI/ML Under the Hood"
+
+A. Interdisciplinary Design — Psychology & More
+
+Persona is built around understanding human behavior—how people connect, why they do things, and how to predict their interests.
+
+Psychology (Primary Supporting Discipline):
+
+We use a psychological framework to model each student. Personality traits (e.g., novelty seeking, social energy) form a taste DNA that predicts which clubs and events they'll enjoy.
+
+Metaphor: Think of it like mapping a person's soul—understanding not just what they like, but why they like it. The app doesn’t just suggest clubs based on interests, it predicts the emotional and social energy that person will bring to it.
+
+Proof: The personality-based trait values such as novelty and social energy influence club matches and event suggestions.
+
+Sociology:
+We understand that people form communities based on shared interests and repeated interactions. We track co-attendance, club membership, and friend connections to predict new potential matches.
+
+Proof: “Mutuals going” at events, friend suggestions based on co-attendance.
+
+Behavioral Economics:
+Using urgency-based filters, we leverage insights from behavioral economics. For example, deadlines and urgency nudge students to act quickly and sign up for clubs before they miss out.
+
+Proof: Urgency labels, “sign up today!” reminders, clubs with upcoming events pushed higher.
+
+Human-Computer Interaction (HCI):
+Persona prioritizes transparency. When a student gets a recommendation, they can see why it was made, whether it’s based on their traits, community signals, or event urgency.
+
+Proof: Hover interactions, tooltips explaining AI decisions.
+
+Data Engineering:
+All club and event data is structured and stored in a relational database (Postgres). This clean data enables the AI system to query and sort through the data to make meaningful predictions about students’ potential connections.
+
+Proof: Structured tables for club names, meeting times, locations, sign-up links, mutuals, etc.
+
+B. How AI/ML Powers Persona — Simple to Technical Breakdown
+
+Layer 1 – Simple Explanation
+
+Persona understands you by mapping your personality, interests, and goals into a digital "persona vector".
+
+Example: If you’re a strategic, social, adventurous person, Persona will suggest clubs or events that match this energy.
+
+How it works: Persona finds clubs and events that are most “similar” to your vector. It’s like matching you with your ideal fit—not based on random keywords, but on real alignment.
+
+Layer 2 – Metaphor Explanation
+
+Imagine Persona as a matchmaker:
+Just like a matchmaker knows your preferences and aligns them with potential partners, Persona knows your academic goals, your social preferences, and your personality, and suggests communities, clubs, and events accordingly.
+
+In simple terms:
+If you like spicy food, and another student loves spicy food, Persona predicts you'd both love a club focused on international cuisine. This isn’t coincidence—it’s data-driven understanding of your behaviors, preferences, and even the energy you bring to group settings.
+
+Layer 3 – Technical Explanation
+
+Transformers and Embeddings:
+Using the MiniLM model (via @xenova/transformers), we transform textual data from club descriptions, event schedules, and personality traits into 384-dimensional vectors.
+
+Code Snippet:
+
+const embedding = model.encode('International Cuisine Club: Discover spicy global food!');  
+
+
+Cosine Similarity:
+We use cosine similarity to calculate how close two vectors are. The closer they are, the stronger the match.
+
+Code Snippet:
+
+const similarity = cosineSimilarity(userVector, eventVector);
+
+
+Hybrid Scoring System:
+We combine multiple signals for final recommendations:
+
+Vector similarity (how similar the club is to your profile)
+
+Collaborative filtering (how many people like you also like it)
+
+Trait explanations (what traits influenced the recommendation)
+
+Code Snippet:
+
+const finalScore = (0.55 * vectorSimilarity) + (0.25 * collaborativeFiltering) + (0.20 * traitExplanation);
+
+
+Urgency:
+The model calculates urgency scores based on event dates (and upcoming deadlines).
+
+Code Snippet:
+
+const urgencyScore = (eventDate - currentDate) < 7 ? 'Urgent' : 'Upcoming';
+
+4. Acceptance Criteria:
+
+Clicking the Persona logo opens the About page with these sections:
+
+TIDAL Summary
+
+Interdisciplinary + AI/ML breakdown
+
+Use metaphors for psychology/ML, followed by the technical details.
+
+Add proof snippets from the app to show that this is real ML, not just algorithms.
+
+Make sure to add hover tooltips for the match score and AI statements.

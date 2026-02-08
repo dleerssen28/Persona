@@ -1,0 +1,58 @@
+Impement this quiz when a new user is created: Persona DNA Quiz (8 questions, scientifically defensible, fast)
+
+**Goal:** estimate 8 Persona DNA traits in **<60 seconds** with **6 questions** while reducing “everyone picks Agree” / social-desirability bias.
+
+
+---
+
+### Instructions to user (1 screen)
+For each card, pick:
+- **MOST like me**
+- **LEAST like me**
+
+No “right answers.” Answer quickly.
+
+---
+
+## The 8 Questions (Best–Worst Blocks)
+Each block shows 4 statements. User chooses **one MOST** and **one LEAST**.
+
+### Q1
+A) I love trying new experiences even if I’m not sure I’ll like them. *(Novelty Seeking)*  
+B) I’m energized by being around people for long periods. *(Social Energy)*  
+C) I like groups with clear plans, structure, and expectations. *(Structure Preference)*  
+D) I’d rather have a few close friendships than lots of casual ones. *(Depth vs Breadth)*
+
+### Q2
+A) I prefer activities where I can express myself creatively. *(Creative Expression)*  
+B) Competition motivates me to show up and improve. *(Competitive Intensity)*  
+C) I’m most fulfilled when I’m doing something meaningful or mission-driven. *(Purpose Orientation)*  
+D) I’m comfortable joining things even when details are uncertain. *(Comfort with Uncertainty)*
+
+### Q3
+A) I get bored doing the same activities repeatedly. *(Novelty Seeking)*  
+B) I’m happiest when my week includes multiple social plans. *(Social Energy)*  
+C) Spontaneous plans are more fun than strict schedules. *(Structure Preference — reverse)*  
+D) I prefer drop-in events over long-term communities. *(Depth vs Breadth — reverse)*
+
+### Q4
+A) I’m drawn to imagination, originality, and creative spaces. *(Creative Expression)*  
+B) I prefer collaborative spaces over competitive ones. *(Competitive Intensity — reverse)*  
+C) I mostly join things for fun, not because they matter. *(Purpose Orientation — reverse)*  
+D) If expectations aren’t clear, I’d rather not participate. *(Comfort with Uncertainty — reverse)*
+
+### Q5
+A) I rarely choose something new if I can choose what I already know. *(Novelty Seeking — reverse)*  
+B) After social events, I usually need a lot of alone time to recover. *(Social Energy — reverse)*  
+C) Rules and formal structure usually make activities less enjoyable. *(Structure Preference — reverse)*  
+D) I’d rather meet lots of new people than invest deeply in a few. *(Depth vs Breadth — reverse)*
+
+### Q6
+A) I prefer practical activities over expressive or creative ones. *(Creative Expression — reverse)*  
+B) I dislike competitive environments, even friendly ones. *(Competitive Intensity — reverse)*  
+C) I’m more likely to commit if a group’s mission aligns with my values. *(Purpose Orientation)*  
+D) I can handle ambiguity if the experience might be worth it. *(Comfort with Uncertainty)*
+
+Make it look good, follow the current design, and use it to create the persona dna. Make it for each option has two buttons on its edges, the one on the left marks it as least and the right as most. You can only choose one each and you must choose one each. Include a progress bar. Include under the top right a menu that opens a little drop down when clicked. You can either click “Project Details” which shows what the button does now or “Retake Quiz” which retakes quiz and resets persona DNA
+
+ALSO add a all out of matches type of screen when done scrolling through any of the scrolling interfaces. Implement the scrolling to be more like tik tok for example. If you leave the page it should not reshow you all the same ones again. However since there is limited data you can make it looping. But if you scroll one for example and go back you should be on the next one not at the start.

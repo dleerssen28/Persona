@@ -46,7 +46,7 @@ export default function LandingPage() {
               </div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
                 Discover Your
-                <span className="block text-primary mt-1">Taste DNA</span>
+                <span className="block text-primary mt-1">Persona DNA</span>
               </h1>
               <p className="text-lg text-muted-foreground max-w-lg leading-relaxed">
                 Persona maps your preferences across movies, music, games, food, and hobbies into a unique profile that connects you with truly compatible people and experiences.

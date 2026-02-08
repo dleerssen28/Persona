@@ -6,16 +6,6 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
-const isReplit = !!process.env.REPL_ID;
-
-if (isReplit) {
-  console.log("Running on Replit — enabling Replit auth");
-  // setupAuth(app);
-} else {
-  console.log("Not running on Replit — skipping Replit auth");
-}
-
-
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;

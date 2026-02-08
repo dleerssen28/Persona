@@ -6,12 +6,13 @@ import {
   type Match,
   type Event, type InsertEvent,
   type EventRsvp, type InsertEventRsvp,
+  type Friendship, type InsertFriendship,
   tasteProfiles, items, interactions, matches, hobbies,
-  events, eventRsvps,
+  events, eventRsvps, friendships,
 } from "@shared/schema";
 import { users, type User, type UpsertUser } from "@shared/models/auth";
 import { db } from "./db";
-import { eq, and, inArray, ne, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, ne, desc, or, sql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -46,6 +47,12 @@ export interface IStorage {
   getUserEventRsvps(userId: string): Promise<EventRsvp[]>;
   deleteEventRsvp(eventId: string, userId: string): Promise<void>;
   hasUserRsvpd(eventId: string, userId: string): Promise<boolean>;
+
+  addFriend(userId: string, friendId: string): Promise<Friendship>;
+  removeFriend(userId: string, friendId: string): Promise<void>;
+  getFriendIds(userId: string): Promise<string[]>;
+  areFriends(userId: string, friendId: string): Promise<boolean>;
+  createFriendship(friendship: InsertFriendship): Promise<Friendship>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -190,6 +197,45 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db.select().from(eventRsvps)
       .where(and(eq(eventRsvps.eventId, eventId), eq(eventRsvps.userId, userId)));
     return !!result;
+  }
+
+  async addFriend(userId: string, friendId: string): Promise<Friendship> {
+    const existing = await this.areFriends(userId, friendId);
+    if (existing) {
+      const [f] = await db.select().from(friendships)
+        .where(and(eq(friendships.userId, userId), eq(friendships.friendId, friendId)));
+      return f;
+    }
+    await db.insert(friendships).values({ userId: friendId, friendId: userId });
+    const [result] = await db.insert(friendships).values({ userId, friendId }).returning();
+    return result;
+  }
+
+  async removeFriend(userId: string, friendId: string): Promise<void> {
+    await db.delete(friendships).where(
+      or(
+        and(eq(friendships.userId, userId), eq(friendships.friendId, friendId)),
+        and(eq(friendships.userId, friendId), eq(friendships.friendId, userId))
+      )
+    );
+  }
+
+  async getFriendIds(userId: string): Promise<string[]> {
+    const rows = await db.select({ friendId: friendships.friendId })
+      .from(friendships)
+      .where(eq(friendships.userId, userId));
+    return rows.map(r => r.friendId);
+  }
+
+  async areFriends(userId: string, friendId: string): Promise<boolean> {
+    const [result] = await db.select().from(friendships)
+      .where(and(eq(friendships.userId, userId), eq(friendships.friendId, friendId)));
+    return !!result;
+  }
+
+  async createFriendship(friendship: InsertFriendship): Promise<Friendship> {
+    const [result] = await db.insert(friendships).values(friendship).returning();
+    return result;
   }
 }
 

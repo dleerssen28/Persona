@@ -1,0 +1,98 @@
+We need to FIX the Maps tab so mobile renders the SAME data density and visuals as desktop. Right now it looks correct on laptop, but on actual phones it shows fewer points / a different distribution. Do NOT redesign the map. Keep the exact style (Snapchat/weather/heatmap vibe), colors, legend, and “events in 48h” counts. This is a rendering + responsiveness + data-fetch consistency fix.
+
+Goal:
+
+The map should show the same number of points (events + clubs) on mobile as desktop for the same user/session.
+
+The clustering/zoom behavior should be consistent and not accidentally hiding points due to viewport sizing, devicePixelRatio, or incorrect bounds.
+
+Do this in a smart, minimal way:
+
+Ensure the Maps tab uses one shared data source and one query key across desktop/mobile
+
+Confirm we are not using “window.innerWidth” or “isMobile” to change API params (limit, filters, time window, bounding box).
+
+If there is any conditional like “if mobile then limit=…” remove it. Mobile should not request fewer points.
+
+Make sure React Query (or fetch logic) doesn’t create separate caches for mobile vs desktop (same queryKey, same endpoint params).
+
+Fix canvas/SVG/WebGL sizing + devicePixelRatio issues (most likely cause)
+
+The map overlay (points + glow + clusters) must be rendered using the container’s true pixel size:
+
+On mount, measure the container via ResizeObserver (width/height).
+
+Set the renderer size to width * devicePixelRatio and height * devicePixelRatio.
+
+Scale drawing coordinates accordingly so points don’t get clipped or compressed.
+
+If using an HTML canvas, set:
+
+canvas.style.width = ${w}px
+
+canvas.style.height = ${h}px
+
+canvas.width = Math.floor(w * dpr)
+
+canvas.height = Math.floor(h * dpr)
+
+ctx.scale(dpr, dpr) (or equivalent transform reset + scale)
+
+If using SVG, ensure viewBox matches container dimensions and that we’re not rounding to ints too aggressively on mobile.
+
+Fix “bounds” / “fit to view” logic so mobile doesn’t filter points out
+
+If the map computes visible points by lat/lng bounds, confirm:
+
+bounds are computed AFTER the container size is known (ResizeObserver ready)
+
+bounds updates on orientation change + resize
+
+no early return that defaults to a tighter bounding box on mobile
+
+Add a debug mode (dev-only) that logs:
+
+pointsFetchedCount
+
+pointsRenderedCount
+
+activeBounds
+
+zoomLevel
+So we can prove mobile is rendering all points.
+
+Make the mobile layout match desktop behavior
+
+Ensure the map container uses 100vh minus bottom-nav height, not a smaller fixed height.
+
+Avoid CSS that reduces height on mobile (e.g. overflow hidden or safe-area issues).
+
+Add safe-area padding handling (iOS):
+
+padding-bottom: env(safe-area-inset-bottom)
+
+Ensure legend and top pills don’t overlap/clip the map (z-index + absolute positioning).
+
+Validate the fix
+
+Use mobile emulation AND real device sizing:
+
+iPhone 12/13/14 viewport
+
+Android viewport
+
+Confirm:
+
+Total points count matches desktop for same user after refresh
+
+No points disappear when you scroll, rotate, or switch tabs
+
+Performance stays smooth (no heavy rerenders; use memoization for point arrays)
+
+Deliverable:
+
+Only change what’s needed in the Maps tab and its renderer utilities.
+
+After fix, mobile and desktop show the same clusters/points and the same density (just scaled to screen).
+
+Keep the exact current aesthetic.

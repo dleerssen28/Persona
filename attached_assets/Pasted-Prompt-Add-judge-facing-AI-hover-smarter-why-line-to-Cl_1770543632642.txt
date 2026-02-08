@@ -1,0 +1,119 @@
+Prompt: Add judge-facing AI hover + smarter “why” line to Clubs cards (match badge + AI statement)
+
+Goal: The Clubs tab already works perfectly. Do NOT change its layout, filters, or sorting logic. Keep the TikTok scroller and the current UI exactly as-is. We only want to upgrade the explainability the way Events now has it: hover on match badge + hover on AI statement, and make the AI statement more specific per club.
+
+1) Hover tooltip on the “% match” badge (Clubs)
+
+On each club card there is a match badge (e.g., “82% match”). Add a hover tooltip/popover (no clicks) that explains the AI/ML computation in 3–6 lines, judge-friendly.
+
+Tooltip requirements:
+
+Must explicitly mention local ML embeddings (MiniLM via transformers) + vector similarity (cosine).
+
+Must mention that we also blend in other signals if used (CF/social/urgency), and show weights if present.
+
+Must show scoringMethod and, if applicable, fallbackReason.
+
+Example tooltip text:
+
+“ML Score: MiniLM text embeddings + cosine similarity between your Taste DNA embedding and this club’s embedding.”
+
+“Rank = 55% taste similarity + 25% community signal + 20% trait explainability.”
+
+“scoringMethod: embedding | fallback: none”
+
+Implementation notes:
+
+Don’t redesign the badge. Just add a tooltip using the existing UI system (shadcn/ui Tooltip or equivalent already used elsewhere).
+
+Tooltip should not overflow weirdly; keep it compact.
+
+2) Smarter “AI why” one-liner on Clubs (context-aware)
+
+Right now the club AI line is too generic. Make it club-specific and truthful based on available data.
+
+Rules (examples):
+
+If club domain is Professional/Academic: reference major/year/academic alignment and “strategy/structure” traits if relevant.
+
+“Strong CS/engineering alignment + high strategy score.”
+
+If club domain is Social: reference social-energy trait and mutuals.
+
+“High social-energy match + 3 mutuals saved this club.”
+
+If club has an upcoming meeting soon: mention it.
+
+“Meeting this week + strong match on your interests.”
+
+If it’s recommended mainly by community picks / CF: say that.
+
+“Recommended because people with similar Taste DNA saved it.”
+
+Deliverable:
+
+Add fields whyShort (single line) + whyLong (3–4 lines) for clubs, like we do for events.
+
+3) Hover tooltip on the AI “why” line (deep dive)
+
+When hovering over the AI statement line at the bottom of a club card, show a tooltip with 3–4 lines explaining:
+
+Which onboarding inputs contributed (major/year + 1–2 taste axes)
+
+Which behavior signals contributed (liked/saved similar clubs, interactions)
+
+Which community/social signals contributed (mutuals going/saved, “community picks”)
+
+If “Upcoming” sort is active, mention urgency/meeting proximity
+
+This tooltip must be grounded in real signals available in the backend (traits + embeddings + interactions + mutuals preview).
+
+4) Backend additions (do NOT break response shape)
+
+Do not change the existing Clubs endpoint response structure in a breaking way.
+
+Wherever Clubs are returned (GET /api/recommendations/:domain for Clubs), ensure each club includes:
+
+existing: matchScore, explanation, scoringMethod, fallbackReason, vectorScore, cfScore (if present)
+
+add:
+
+matchMathTooltip (string for match badge hover)
+
+whyShort (string for bottom line)
+
+whyLong (string for hover deep dive)
+
+(optional but ideal) whySignals: small object like {tasteAxesUsed: [...], socialUsed: boolean, cfUsed: boolean, urgencyUsed: boolean} for future proofing
+
+Frontend should render:
+
+Match badge tooltip uses matchMathTooltip (fallback to a default tooltip if missing).
+
+Bottom AI line uses whyShort.
+
+Hover on bottom AI line shows whyLong.
+
+5) Constraints / Non-goals
+
+Do NOT alter the Clubs multi-select chips, urgency toggle, sorting behavior, or card layout.
+
+Do NOT touch Events, Friends, or Profile tabs.
+
+This is purely an explainability + copy upgrade.
+
+6) Verification
+
+After implementing:
+
+Run /api/demo/reset
+
+Open Clubs tab
+
+Verify:
+
+Hover on match % shows ML explanation
+
+Hover on AI line shows 3–4 line reasoning
+
+Copy differs appropriately for academic/professional vs social vs volunteering vs sports clubs

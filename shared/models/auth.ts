@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar, doublePrecision, real } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, timestamp, varchar, doublePrecision, real } from "drizzle-orm/pg-core";
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -24,6 +24,11 @@ export const users = pgTable("users", {
   locationLat: doublePrecision("location_lat"),
   locationLng: doublePrecision("location_lng"),
   privacyRadiusKm: real("privacy_radius_km").default(25),
+  gradYear: integer("grad_year"),
+  classStanding: varchar("class_standing"),
+  mainClubItemId: varchar("main_club_item_id"),
+  instagramUrl: varchar("instagram_url"),
+  phoneNumber: varchar("phone_number"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
