@@ -1,10 +1,10 @@
 import { storage } from "./storage";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import type { InsertItem, InsertHobby, InsertTasteProfile } from "@shared/schema";
+import type { InsertItem, InsertHobby, InsertTasteProfile, InsertEvent } from "@shared/schema";
 import type { UpsertUser } from "@shared/models/auth";
 import { eq, sql } from "drizzle-orm";
-import { items, hobbies } from "@shared/schema";
+import { items, hobbies, events } from "@shared/schema";
 
 const SEED_USERS: { user: UpsertUser; profile: InsertTasteProfile }[] = [
   {
@@ -141,6 +141,116 @@ const SEED_HOBBIES: InsertHobby[] = [
   { title: "Camping & Backpacking", tags: ["outdoor", "nature", "adventure", "survival"], description: "Disconnect from the world and reconnect with nature. Camp under the stars, cook over a fire, and explore the wilderness.", starterLinks: [], traitNovelty: 0.5, traitIntensity: 0.5, traitCozy: 0.4, traitStrategy: 0.4, traitSocial: 0.5, traitCreativity: 0.3, traitNostalgia: 0.5, traitAdventure: 0.9 },
 ];
 
+const SEED_EVENTS: InsertEvent[] = [
+  {
+    title: "Lakers vs Celtics",
+    description: "NBA regular season showdown at Crypto.com Arena. Two legendary franchises battle it out under the bright lights.",
+    category: "organized",
+    location: "Crypto.com Arena, Los Angeles",
+    dateTime: new Date("2026-03-15T19:30:00"),
+    imageUrl: "/event-basketball",
+    tags: ["basketball", "nba", "sports", "competitive"],
+    creatorName: "NBA",
+    contactInfo: "tickets@nba.com",
+    attendeeCount: 18500,
+    traitNovelty: 0.4, traitIntensity: 0.9, traitCozy: 0.2, traitStrategy: 0.6, traitSocial: 0.85, traitCreativity: 0.2, traitNostalgia: 0.5, traitAdventure: 0.6,
+  },
+  {
+    title: "Kendrick Lamar Live",
+    description: "Kendrick Lamar brings his latest tour to the city. Expect deep lyrics, electrifying energy, and an unforgettable night.",
+    category: "organized",
+    location: "Madison Square Garden, NYC",
+    dateTime: new Date("2026-04-02T20:00:00"),
+    imageUrl: "/event-concert",
+    tags: ["concert", "hip-hop", "music", "live"],
+    creatorName: "Live Nation",
+    contactInfo: "info@livenation.com",
+    attendeeCount: 20000,
+    traitNovelty: 0.6, traitIntensity: 0.85, traitCozy: 0.15, traitStrategy: 0.2, traitSocial: 0.9, traitCreativity: 0.7, traitNostalgia: 0.4, traitAdventure: 0.6,
+  },
+  {
+    title: "CS Club Weekly Meetup",
+    description: "Computer Science club meets to discuss projects, host lightning talks, and work on open source contributions together.",
+    category: "organized",
+    location: "Engineering Building Room 204",
+    dateTime: new Date("2026-02-20T18:00:00"),
+    imageUrl: "/event-club",
+    tags: ["tech", "coding", "college", "networking"],
+    creatorName: "CS Club",
+    contactInfo: "cs.club@university.edu",
+    attendeeCount: 45,
+    traitNovelty: 0.7, traitIntensity: 0.3, traitCozy: 0.4, traitStrategy: 0.8, traitSocial: 0.7, traitCreativity: 0.8, traitNostalgia: 0.2, traitAdventure: 0.4,
+  },
+  {
+    title: "Spring Music Festival",
+    description: "Three-day outdoor music festival featuring indie, electronic, and alternative artists. Food trucks, art installations, and good vibes.",
+    category: "organized",
+    location: "Zilker Park, Austin TX",
+    dateTime: new Date("2026-05-10T12:00:00"),
+    imageUrl: "/event-festival",
+    tags: ["festival", "music", "outdoor", "indie"],
+    creatorName: "Austin Events Co",
+    contactInfo: "hello@springfest.com",
+    attendeeCount: 35000,
+    traitNovelty: 0.7, traitIntensity: 0.7, traitCozy: 0.3, traitStrategy: 0.2, traitSocial: 0.95, traitCreativity: 0.7, traitNostalgia: 0.3, traitAdventure: 0.8,
+  },
+  {
+    title: "Spring Hackathon 2026",
+    description: "48-hour hackathon open to all skill levels. Build something amazing, win prizes, and meet fellow builders.",
+    category: "organized",
+    location: "Innovation Hub, Campus Center",
+    dateTime: new Date("2026-03-22T09:00:00"),
+    imageUrl: "/event-hackathon",
+    tags: ["hackathon", "tech", "coding", "competition"],
+    creatorName: "HackClub",
+    contactInfo: "organizers@hackevent.io",
+    attendeeCount: 200,
+    traitNovelty: 0.85, traitIntensity: 0.7, traitCozy: 0.2, traitStrategy: 0.8, traitSocial: 0.7, traitCreativity: 0.9, traitNostalgia: 0.1, traitAdventure: 0.7,
+  },
+  {
+    title: "Movie & Pizza Night",
+    description: "Watching Dune Part 2 on the projector with pizza and drinks. Bring snacks to share! Apartment 4B, buzzer code is 1234.",
+    category: "custom",
+    location: "Jake's Apartment, 412 Oak St",
+    dateTime: new Date("2026-02-14T19:00:00"),
+    imageUrl: "/event-movienight",
+    tags: ["movie", "social", "cozy", "food"],
+    creatorId: "seed-colin",
+    creatorName: "Colin Weis",
+    contactInfo: "colin.weis@personagraph.io",
+    attendeeCount: 8,
+    traitNovelty: 0.3, traitIntensity: 0.3, traitCozy: 0.9, traitStrategy: 0.2, traitSocial: 0.8, traitCreativity: 0.3, traitNostalgia: 0.6, traitAdventure: 0.2,
+  },
+  {
+    title: "Pickleball at the Rec",
+    description: "Casual pickleball session at the campus recreation center. All skill levels welcome. I'll bring extra paddles!",
+    category: "custom",
+    location: "Campus Rec Center, Courts 3-4",
+    dateTime: new Date("2026-02-16T14:00:00"),
+    imageUrl: "/event-pickleball",
+    tags: ["sports", "fitness", "social", "outdoor"],
+    creatorId: "seed-andy",
+    creatorName: "Andy Chen",
+    contactInfo: "andy.chen@personagraph.io",
+    attendeeCount: 6,
+    traitNovelty: 0.4, traitIntensity: 0.6, traitCozy: 0.3, traitStrategy: 0.5, traitSocial: 0.85, traitCreativity: 0.2, traitNostalgia: 0.3, traitAdventure: 0.5,
+  },
+  {
+    title: "Board Game Marathon",
+    description: "All-day board game session! Bringing Catan, Codenames, Ticket to Ride, and more. BYOB and snacks welcome.",
+    category: "custom",
+    location: "Devon's Place, 88 Elm Ave",
+    dateTime: new Date("2026-02-22T12:00:00"),
+    imageUrl: "/event-gamenight",
+    tags: ["games", "strategy", "social", "cozy"],
+    creatorId: "seed-devon",
+    creatorName: "Devon Leerssen",
+    contactInfo: "devon.leerssen@personagraph.io",
+    attendeeCount: 10,
+    traitNovelty: 0.4, traitIntensity: 0.3, traitCozy: 0.7, traitStrategy: 0.85, traitSocial: 0.9, traitCreativity: 0.5, traitNostalgia: 0.6, traitAdventure: 0.2,
+  },
+];
+
 export async function seedDatabase() {
   const [itemCountResult] = await db.select({ count: sql<number>`count(*)` }).from(items);
   const itemCount = Number(itemCountResult.count);
@@ -181,5 +291,18 @@ export async function seedDatabase() {
       console.log(`  Created user: ${user.firstName} ${user.lastName}`);
     }
     console.log("Seed users complete.");
+  }
+
+  const eventCount = await storage.getEventCount();
+  if (eventCount < SEED_EVENTS.length) {
+    if (eventCount > 0) {
+      await db.delete(events);
+      console.log("Cleared old events for re-seed...");
+    }
+    console.log("Seeding events...");
+    for (const event of SEED_EVENTS) {
+      await storage.createEvent(event);
+    }
+    console.log(`Seeded ${SEED_EVENTS.length} events.`);
   }
 }

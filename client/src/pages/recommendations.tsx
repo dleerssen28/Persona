@@ -133,6 +133,7 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recommendations", domain] });
+      queryClient.invalidateQueries({ queryKey: ["/api/interactions/collection"] });
     },
     onError: (err) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

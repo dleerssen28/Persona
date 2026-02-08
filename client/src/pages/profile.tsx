@@ -9,8 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TRAIT_AXES, type TasteProfile, type Item } from "@shared/schema";
 import {
   Sparkles, TrendingUp, Grip, ChevronUp, ChevronDown,
-  Image as ImageIcon, Film, Music, Gamepad2,
-  Settings, Palette, Upload, X, Check
+  Image as ImageIcon, Film, Music, Gamepad2, Utensils,
+  Settings, Palette, Upload, X, Check, Heart, Bookmark
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef, useCallback } from "react";
@@ -48,6 +48,7 @@ interface ProfileSection {
 const DEFAULT_SECTIONS: ProfileSection[] = [
   { id: "top-traits", title: "Top 3 Traits", visible: true },
   { id: "mydna-top3", title: "myDNA Top 3", visible: true },
+  { id: "my-collection", title: "My Collection", visible: true },
   { id: "taste-dna", title: "Taste DNA Radar", visible: true },
   { id: "gallery", title: "Gallery (Hobby Tags)", visible: true },
 ];
@@ -58,6 +59,13 @@ interface HobbyWithMatch {
   matchScore: number;
   tags: string[] | null;
   whyItFits: string;
+}
+
+interface CollectionItem {
+  id: string;
+  action: string;
+  domain: string;
+  item: Item;
 }
 
 type ThemeId = "oceanic" | "aurora" | "ember" | "custom";
@@ -123,6 +131,10 @@ export default function ProfilePage() {
 
   const { data: hobbies } = useQuery<HobbyWithMatch[]>({
     queryKey: ["/api/explore/hobbies"],
+  });
+
+  const { data: collection } = useQuery<CollectionItem[]>({
+    queryKey: ["/api/interactions/collection"],
   });
 
   const handleCustomImage = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -262,6 +274,80 @@ export default function ProfilePage() {
         </div>
       </div>
     ),
+
+    "my-collection": () => {
+      const DOMAIN_ICONS: Record<string, typeof Film> = {
+        movies: Film,
+        music: Music,
+        games: Gamepad2,
+        food: Utensils,
+      };
+
+      const liked = collection?.filter(c => c.action === "like" || c.action === "love") || [];
+      const saved = collection?.filter(c => c.action === "save") || [];
+
+      if (liked.length === 0 && saved.length === 0) {
+        return (
+          <div className={cn(GLASS_BASE, glassClass, "p-5")} data-testid="section-my-collection">
+            <div className="flex items-center gap-2 mb-3">
+              <Heart className="h-4 w-4 text-white/80" />
+              <h2 className="font-semibold text-white">My Collection</h2>
+            </div>
+            <p className="text-xs text-white/40 text-center py-4">
+              Like or save items in For You to build your collection
+            </p>
+          </div>
+        );
+      }
+
+      return (
+        <div className={cn(GLASS_BASE, glassClass, "p-5")} data-testid="section-my-collection">
+          <div className="flex items-center gap-2 mb-4">
+            <Heart className="h-4 w-4 text-white/80" />
+            <h2 className="font-semibold text-white">My Collection</h2>
+            <span className="text-xs text-white/40 ml-auto">{(liked.length + saved.length)} items</span>
+          </div>
+          {liked.length > 0 && (
+            <div className="mb-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Heart className="h-3 w-3 text-rose-400" />
+                <span className="text-xs font-medium text-white/60">Liked</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {liked.slice(0, 8).map((c) => {
+                  const DomainIcon = DOMAIN_ICONS[c.domain] || Film;
+                  return (
+                    <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white/[0.06] border border-white/10" data-testid={`collection-liked-${c.id}`}>
+                      <DomainIcon className="h-3 w-3 text-white/40 shrink-0" />
+                      <span className="text-xs text-white/80 truncate max-w-[120px]">{c.item.title}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {saved.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Bookmark className="h-3 w-3 text-amber-400" />
+                <span className="text-xs font-medium text-white/60">Saved</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {saved.slice(0, 8).map((c) => {
+                  const DomainIcon = DOMAIN_ICONS[c.domain] || Film;
+                  return (
+                    <div key={c.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white/[0.06] border border-white/10" data-testid={`collection-saved-${c.id}`}>
+                      <DomainIcon className="h-3 w-3 text-white/40 shrink-0" />
+                      <span className="text-xs text-white/80 truncate max-w-[120px]">{c.item.title}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    },
 
     "taste-dna": () => (
       <div className={cn(GLASS_BASE, glassClass, "p-5")} data-testid="section-taste-dna">

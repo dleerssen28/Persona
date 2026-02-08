@@ -200,6 +200,138 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/events", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const category = req.query.category as string | undefined;
+
+      const profile = await storage.getTasteProfile(userId);
+      const allEvents = await storage.getEvents(category);
+
+      const userRsvps = await storage.getUserEventRsvps(userId);
+      const rsvpEventIds = new Set(userRsvps.map(r => r.eventId));
+
+      const eventsWithScore = await Promise.all(allEvents.map(async (event) => {
+        let matchScore = 50;
+        if (profile) {
+          const eventTraits: Record<string, number> = {};
+          for (const axis of TRAIT_AXES) {
+            const key = `trait${axis.charAt(0).toUpperCase() + axis.slice(1)}` as keyof typeof event;
+            eventTraits[axis] = (event[key] as number) ?? 0.5;
+          }
+          const result = computeItemMatchScore(profile, eventTraits);
+          matchScore = result.score;
+        }
+
+        const rsvps = await storage.getEventRsvps(event.id);
+        const attendeeUserIds = rsvps.map(r => r.userId);
+
+        let attendees: { id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null }[] = [];
+        for (const uid of attendeeUserIds.slice(0, 10)) {
+          const user = await storage.getUser(uid);
+          if (user) {
+            attendees.push({ id: user.id, firstName: user.firstName, lastName: user.lastName, profileImageUrl: user.profileImageUrl });
+          }
+        }
+
+        return {
+          ...event,
+          matchScore,
+          hasRsvpd: rsvpEventIds.has(event.id),
+          rsvpCount: rsvps.length,
+          attendees,
+        };
+      }));
+
+      eventsWithScore.sort((a, b) => b.matchScore - a.matchScore);
+      res.json(eventsWithScore);
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      res.status(500).json({ message: "Failed to fetch events" });
+    }
+  });
+
+  app.post("/api/events/:id/rsvp", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const eventId = req.params.id;
+
+      const already = await storage.hasUserRsvpd(eventId, userId);
+      if (already) {
+        await storage.deleteEventRsvp(eventId, userId);
+        return res.json({ rsvpd: false });
+      }
+
+      await storage.createEventRsvp({ eventId, userId });
+      res.json({ rsvpd: true });
+    } catch (error) {
+      console.error("Error toggling RSVP:", error);
+      res.status(500).json({ message: "Failed to toggle RSVP" });
+    }
+  });
+
+  app.get("/api/events/:id/matches", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const eventId = req.params.id;
+
+      const myProfile = await storage.getTasteProfile(userId);
+      if (!myProfile) return res.json([]);
+
+      const rsvps = await storage.getEventRsvps(eventId);
+      const otherUserIds = rsvps.map(r => r.userId).filter(id => id !== userId);
+
+      const matchedAttendees = [];
+      for (const uid of otherUserIds) {
+        const user = await storage.getUser(uid);
+        const profile = await storage.getTasteProfile(uid);
+        if (!user || !profile) continue;
+
+        const { score, color, explanations } = computeMatchScore(myProfile, profile);
+        matchedAttendees.push({
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          profileImageUrl: user.profileImageUrl,
+          email: user.email,
+          matchScore: score,
+          color,
+          explanations,
+          topClusters: profile.topClusters || [],
+        });
+      }
+
+      matchedAttendees.sort((a, b) => b.matchScore - a.matchScore);
+      res.json(matchedAttendees);
+    } catch (error) {
+      console.error("Error fetching event matches:", error);
+      res.status(500).json({ message: "Failed to fetch event matches" });
+    }
+  });
+
+  app.get("/api/interactions/collection", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const allInteractions = await storage.getUserInteractions(userId);
+
+      const likedOrSaved = allInteractions.filter(i => i.action === "like" || i.action === "love" || i.action === "save");
+
+      const itemIds = Array.from(new Set(likedOrSaved.map(i => i.itemId)));
+      const itemsData = await storage.getItemsByIds(itemIds);
+      const itemMap = new Map(itemsData.map(item => [item.id, item]));
+
+      const collection = likedOrSaved.map(interaction => ({
+        ...interaction,
+        item: itemMap.get(interaction.itemId) || null,
+      })).filter(c => c.item !== null);
+
+      res.json(collection);
+    } catch (error) {
+      console.error("Error fetching collection:", error);
+      res.status(500).json({ message: "Failed to fetch collection" });
+    }
+  });
+
   app.get("/api/explore/hobbies", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;

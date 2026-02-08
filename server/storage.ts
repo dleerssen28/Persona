@@ -4,7 +4,10 @@ import {
   type Interaction, type InsertInteraction,
   type Hobby, type InsertHobby,
   type Match,
+  type Event, type InsertEvent,
+  type EventRsvp, type InsertEventRsvp,
   tasteProfiles, items, interactions, matches, hobbies,
+  events, eventRsvps,
 } from "@shared/schema";
 import { users, type User, type UpsertUser } from "@shared/models/auth";
 import { db } from "./db";
@@ -32,6 +35,17 @@ export interface IStorage {
   getHobbies(): Promise<Hobby[]>;
   createHobby(hobby: InsertHobby): Promise<Hobby>;
   getHobbyCount(): Promise<number>;
+
+  getEvents(category?: string): Promise<Event[]>;
+  getEventById(id: string): Promise<Event | undefined>;
+  createEvent(event: InsertEvent): Promise<Event>;
+  getEventCount(): Promise<number>;
+
+  createEventRsvp(rsvp: InsertEventRsvp): Promise<EventRsvp>;
+  getEventRsvps(eventId: string): Promise<EventRsvp[]>;
+  getUserEventRsvps(userId: string): Promise<EventRsvp[]>;
+  deleteEventRsvp(eventId: string, userId: string): Promise<void>;
+  hasUserRsvpd(eventId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -129,6 +143,53 @@ export class DatabaseStorage implements IStorage {
   async getHobbyCount(): Promise<number> {
     const [result] = await db.select({ count: sql<number>`count(*)` }).from(hobbies);
     return Number(result.count);
+  }
+
+  async getEvents(category?: string): Promise<Event[]> {
+    if (category) {
+      return db.select().from(events).where(eq(events.category, category));
+    }
+    return db.select().from(events);
+  }
+
+  async getEventById(id: string): Promise<Event | undefined> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
+  }
+
+  async createEvent(event: InsertEvent): Promise<Event> {
+    const [result] = await db.insert(events).values(event).returning();
+    return result;
+  }
+
+  async getEventCount(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)` }).from(events);
+    return Number(result.count);
+  }
+
+  async createEventRsvp(rsvp: InsertEventRsvp): Promise<EventRsvp> {
+    const [result] = await db.insert(eventRsvps).values(rsvp).returning();
+    return result;
+  }
+
+  async getEventRsvps(eventId: string): Promise<EventRsvp[]> {
+    return db.select().from(eventRsvps).where(eq(eventRsvps.eventId, eventId));
+  }
+
+  async getUserEventRsvps(userId: string): Promise<EventRsvp[]> {
+    return db.select().from(eventRsvps).where(eq(eventRsvps.userId, userId));
+  }
+
+  async deleteEventRsvp(eventId: string, userId: string): Promise<void> {
+    await db.delete(eventRsvps).where(
+      and(eq(eventRsvps.eventId, eventId), eq(eventRsvps.userId, userId))
+    );
+  }
+
+  async hasUserRsvpd(eventId: string, userId: string): Promise<boolean> {
+    const [result] = await db.select().from(eventRsvps)
+      .where(and(eq(eventRsvps.eventId, eventId), eq(eventRsvps.userId, userId)));
+    return !!result;
   }
 }
 
