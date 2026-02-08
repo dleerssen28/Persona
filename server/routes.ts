@@ -9,6 +9,16 @@ import { hybridRecommend, hybridSocialMatch, hybridEventScore, hybridHobbyScore 
 import { recomputeTasteEmbedding, deriveEmbeddingFromProfile, checkEmbeddingHealth, generateBatchEmbeddings, buildEmbeddingText, storeEmbedding, computeWeightedAverageEmbedding, generateEmbedding, computeCosineSimilarity, cosineSimilarityToScore, isValidEmbedding, haversineDistance, getDistanceBucket, findSimilarByEmbedding } from "./embeddings";
 import { pool } from "./db";
 
+function demoAuth(req: any, res: any, next: any) {
+  if (process.env.DEMO_BYPASS_AUTH === "true") {
+    if (!req.user) {
+      req.user = { claims: { sub: "seed-garv" } };
+    }
+    return next();
+  }
+  return isAuthenticated(req, res, next);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -95,7 +105,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/recommendations/:domain", isAuthenticated, async (req: any, res) => {
+  app.get("/api/recommendations/:domain", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const domain = req.params.domain as Domain;
@@ -453,7 +463,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/debug/ai-status", isAuthenticated, async (req: any, res) => {
+  app.get("/api/debug/ai-status", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const health = await checkEmbeddingHealth();
@@ -560,7 +570,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/debug/embedding-similarity-sanity", isAuthenticated, async (req: any, res) => {
+  app.get("/api/debug/embedding-similarity-sanity", demoAuth, async (req: any, res) => {
     try {
       const domains = ["movies", "music", "games", "food"];
       const domainResults: Record<string, any> = {};
@@ -618,7 +628,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/events/for-you", isAuthenticated, async (req: any, res) => {
+  app.get("/api/events/for-you", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const userLat = req.query.lat ? parseFloat(req.query.lat as string) : null;
@@ -725,7 +735,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/events/:id/attendee-matches", isAuthenticated, async (req: any, res) => {
+  app.get("/api/events/:id/attendee-matches", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const eventId = req.params.id;
@@ -790,7 +800,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/debug/match-proof/:otherUserId", isAuthenticated, async (req: any, res) => {
+  app.get("/api/debug/match-proof/:otherUserId", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const otherUserId = req.params.otherUserId;
@@ -880,7 +890,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/demo/reset", isAuthenticated, async (req: any, res) => {
+  app.post("/api/demo/reset", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
 
@@ -954,47 +964,47 @@ export async function registerRoutes(
         }
       }
 
-      const existingProfile = await storage.getTasteProfile(userId);
-      if (existingProfile) {
-        const demoItems = [
-          ...(itemsByDomain.get("movies") || []).slice(0, 4),
-          ...(itemsByDomain.get("music") || []).slice(0, 3),
-          ...(itemsByDomain.get("games") || []).slice(0, 2),
-        ];
-        for (const item of demoItems) {
-          await storage.createInteraction({
-            userId,
-            itemId: item.id,
-            domain: item.domain,
-            action: "love",
-            weight: 2.0,
-          });
+      let existingProfile = await storage.getTasteProfile(userId);
+      if (!existingProfile) {
+        const existingUser = await storage.getUser(userId);
+        if (!existingUser) {
+          await pool.query(
+            `INSERT INTO users (id, email, first_name, last_name) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
+            [userId, "demo@persona.app", "Demo", "User"]
+          );
         }
-        await recomputeTasteEmbedding(userId);
+        existingProfile = await storage.upsertTasteProfile({ userId, ...GARV_PROFILE });
+      }
+      const demoItems = [
+        ...(itemsByDomain.get("movies") || []).slice(0, 4),
+        ...(itemsByDomain.get("music") || []).slice(0, 3),
+        ...(itemsByDomain.get("games") || []).slice(0, 2),
+      ];
+      for (const item of demoItems) {
+        await storage.createInteraction({
+          userId,
+          itemId: item.id,
+          domain: item.domain,
+          action: "love",
+          weight: 2.0,
+        });
+      }
+      await recomputeTasteEmbedding(userId);
+      const recomputedUser = await recomputeTasteEmbedding(userId);
+      if (!recomputedUser.updated) {
+        await deriveEmbeddingFromProfile(userId);
       }
 
       const allEventIds = await pool.query("SELECT id FROM events");
-      if (allEventIds.rows.length > 0) {
-        const topEvent = allEventIds.rows[0];
-        const rsvpUsers = [...seedUserIds, userId].filter(Boolean);
+      const rsvpUsers = [...seedUserIds, userId].filter(Boolean);
+      for (const eventRow of allEventIds.rows) {
         for (const uid of rsvpUsers) {
           try {
-            const already = await storage.hasUserRsvpd(topEvent.id, uid);
+            const already = await storage.hasUserRsvpd(eventRow.id, uid);
             if (!already) {
-              await storage.createEventRsvp({ eventId: topEvent.id, userId: uid });
+              await storage.createEventRsvp({ eventId: eventRow.id, userId: uid });
             }
           } catch {}
-        }
-        const secondEvent = allEventIds.rows[1];
-        if (secondEvent) {
-          for (const uid of seedUserIds.slice(0, 2)) {
-            try {
-              const already = await storage.hasUserRsvpd(secondEvent.id, uid);
-              if (!already) {
-                await storage.createEventRsvp({ eventId: secondEvent.id, userId: uid });
-              }
-            } catch {}
-          }
         }
       }
 
@@ -1016,7 +1026,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/demo/story", isAuthenticated, async (_req: any, res) => {
+  app.get("/api/demo/story", demoAuth, async (_req: any, res) => {
     try {
       res.json({
         title: "Persona: 60-Second Demo Script",
