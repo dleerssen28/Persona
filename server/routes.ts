@@ -781,68 +781,33 @@ export async function registerRoutes(
   app.get("/api/events/for-you", demoAuth, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const userLat = req.query.lat ? parseFloat(req.query.lat as string) : null;
-      const userLng = req.query.lng ? parseFloat(req.query.lng as string) : null;
 
       const profile = await storage.getTasteProfile(userId);
       if (!profile) return res.json([]);
 
       const allEvents = await storage.getEvents();
-      const now = new Date();
       const userRsvps = await storage.getUserEventRsvps(userId);
       const rsvpEventIds = new Set(userRsvps.map(r => r.eventId));
 
       const scored = await Promise.all(allEvents.map(async (event) => {
         const hasEmbeddings = isValidEmbedding(profile.embedding) && isValidEmbedding(event.embedding);
 
-        let tasteScore = 50;
+        let personaScore = 50;
         if (hasEmbeddings) {
           const sim = computeCosineSimilarity(profile.embedding!, event.embedding!);
-          tasteScore = cosineSimilarityToScore(sim);
+          personaScore = cosineSimilarityToScore(sim);
         }
-
-        let proximityScore = 50;
-        let distanceKm: number | null = null;
-        let distanceBucket: string | null = null;
-        if (userLat && userLng && event.locationLat && event.locationLng) {
-          distanceKm = Math.round(haversineDistance(userLat, userLng, event.locationLat, event.locationLng) * 10) / 10;
-          distanceBucket = getDistanceBucket(distanceKm);
-          if (distanceKm < 5) proximityScore = 100;
-          else if (distanceKm < 15) proximityScore = 85;
-          else if (distanceKm < 30) proximityScore = 70;
-          else if (distanceKm < 50) proximityScore = 55;
-          else if (distanceKm < 100) proximityScore = 40;
-          else proximityScore = 20;
-        }
-
-        let timeRelevance = 50;
-        const eventDate = event.dateTime ? new Date(event.dateTime) : null;
-        if (eventDate) {
-          const daysUntil = (eventDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-          if (daysUntil < 0) timeRelevance = 10;
-          else if (daysUntil <= 3) timeRelevance = 100;
-          else if (daysUntil <= 7) timeRelevance = 90;
-          else if (daysUntil <= 14) timeRelevance = 75;
-          else if (daysUntil <= 30) timeRelevance = 55;
-          else timeRelevance = 35;
-        }
-
-        const eventScore = Math.round(
-          tasteScore * 0.55 +
-          proximityScore * 0.25 +
-          timeRelevance * 0.20
-        );
-        const predictedEnjoyment = Math.max(15, Math.min(100, eventScore));
 
         const rsvps = await storage.getEventRsvps(event.id);
         const rsvpCount = rsvps.length;
         const hasRsvpd = rsvpEventIds.has(event.id);
 
-        const mutualsGoing: { id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null; matchPercent: number }[] = [];
+        const mutualFriendsPreview: { id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null; matchPercent: number }[] = [];
         const attendeePreview: { id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null }[] = [];
-        let topMatches = 0;
+        let socialScoreSum = 0;
+        let socialScoreCount = 0;
 
-        for (const rsvp of rsvps.slice(0, 10)) {
+        for (const rsvp of rsvps.slice(0, 15)) {
           if (rsvp.userId === userId) continue;
           const otherUser = await storage.getUser(rsvp.userId);
           if (!otherUser) continue;
@@ -850,31 +815,50 @@ export async function registerRoutes(
           const preview = { id: otherUser.id, firstName: otherUser.firstName, lastName: otherUser.lastName, profileImageUrl: otherUser.profileImageUrl };
           if (attendeePreview.length < 3) attendeePreview.push(preview);
 
-          if (hasEmbeddings) {
+          if (isValidEmbedding(profile.embedding)) {
             const otherProfile = await storage.getTasteProfile(rsvp.userId);
             if (otherProfile && isValidEmbedding(otherProfile.embedding)) {
               const sim = computeCosineSimilarity(profile.embedding!, otherProfile.embedding!);
               const matchPct = cosineSimilarityToScore(sim);
+              socialScoreSum += matchPct;
+              socialScoreCount++;
               if (matchPct > 65) {
-                mutualsGoing.push({ ...preview, matchPercent: matchPct });
-                topMatches++;
+                mutualFriendsPreview.push({ ...preview, matchPercent: matchPct });
               }
             }
           }
         }
-        mutualsGoing.sort((a, b) => b.matchPercent - a.matchPercent);
+        mutualFriendsPreview.sort((a, b) => b.matchPercent - a.matchPercent);
+        const mutualFriendsGoingCount = mutualFriendsPreview.length;
 
-        const whyParts: string[] = [];
-        if (tasteScore >= 75) whyParts.push("Strongly aligned with your interests");
-        else if (tasteScore >= 50) whyParts.push("Good fit for your profile");
-        if (mutualsGoing.length > 0) whyParts.push(`${mutualsGoing.length} compatible ${mutualsGoing.length === 1 ? "student" : "students"} going`);
-        if (event.clubName) whyParts.push(`Hosted by ${event.clubName}`);
-        const whyThisEvent = whyParts.length > 0 ? whyParts.join(" - ") : "Discover something new on campus";
-
-        let nextAction = "RSVP";
-        if (hasRsvpd) nextAction = topMatches > 0 ? `Message ${topMatches} top matches` : "You're going!";
+        let socialScore = 15;
+        if (socialScoreCount > 0) {
+          const avgSimilarity = socialScoreSum / socialScoreCount;
+          const friendBonus = Math.min(30, mutualFriendsGoingCount * 10);
+          const attendeeBonus = Math.min(20, socialScoreCount * 5);
+          socialScore = Math.max(15, Math.min(100, Math.round(avgSimilarity * 0.5 + friendBonus + attendeeBonus)));
+        }
 
         const urgency = computeUrgency(event);
+        const urgencyScore = urgency.urgencyScore;
+
+        const finalScore = Math.max(15, Math.min(100, Math.round(
+          personaScore * 0.45 +
+          socialScore * 0.30 +
+          urgencyScore * 0.25
+        )));
+
+        const whyParts: string[] = [];
+        if (mutualFriendsGoingCount > 0) {
+          whyParts.push(`${mutualFriendsGoingCount} ${mutualFriendsGoingCount === 1 ? "friend" : "friends"} going`);
+        }
+        if (personaScore >= 75) whyParts.push("Matches your interests");
+        else if (personaScore >= 60) whyParts.push("Aligns with your vibe");
+        if (urgencyScore >= 90) whyParts.push("Happening today");
+        else if (urgencyScore >= 75) whyParts.push("Happening soon");
+        else if (urgencyScore >= 50) whyParts.push("Coming up this week");
+        if (event.isDeal) whyParts.push("Deal available");
+        const whyRecommended = whyParts.length > 0 ? whyParts.join(" · ") : "Discover something new around campus";
 
         return {
           id: event.id,
@@ -885,34 +869,32 @@ export async function registerRoutes(
           dateTime: event.dateTime,
           imageUrl: event.imageUrl,
           tags: event.tags,
+          organizerName: event.organizerName || event.creatorName || null,
           clubName: event.clubName || null,
-          clubId: event.clubId || null,
           cost: event.cost || null,
           rsvpLimit: event.rsvpLimit || null,
           locationDetails: event.locationDetails || null,
-          eventScore,
-          predictedEnjoymentPercent: predictedEnjoyment,
-          tasteEmbeddingSimilarity: tasteScore,
-          proximityScore,
-          timeRelevance,
-          distanceKm,
-          distanceBucket,
-          urgencyScore: urgency.urgencyScore,
+          priceInfo: event.priceInfo || null,
+          isDeal: event.isDeal || false,
+          dealExpiresAt: event.dealExpiresAt || null,
+          personaScore,
+          socialScore,
+          urgencyScore,
+          finalScore,
           urgencyLabel: urgency.urgencyLabel,
           deadline: urgency.deadline,
-          mutualsGoing,
-          mutualsGoingCount: mutualsGoing.length,
+          mutualFriendsGoingCount,
+          mutualFriendsPreview: mutualFriendsPreview.slice(0, 3),
           attendeePreview,
-          whyThisEvent,
-          nextAction,
+          whyRecommended,
           hasRsvpd,
           rsvpCount,
           scoringMethod: hasEmbeddings ? "embedding" : "trait_fallback",
-          scoringFormula: "0.55*tasteEmbeddingSimilarity + 0.25*proximityScore + 0.20*timeRelevance",
+          scoringFormula: "0.45*personaScore + 0.30*socialScore + 0.25*urgencyScore",
         };
       }));
 
-      scored.sort((a, b) => b.eventScore - a.eventScore);
+      scored.sort((a, b) => b.finalScore - a.finalScore);
       res.json(scored);
     } catch (error) {
       console.error("Error fetching for-you events:", error);
@@ -1181,14 +1163,38 @@ export async function registerRoutes(
         await deriveEmbeddingFromProfile(userId);
       }
 
-      const allEventIds = await pool.query("SELECT id FROM events");
-      const rsvpUsers = [...seedUserIds, userId].filter(Boolean);
-      for (const eventRow of allEventIds.rows) {
-        for (const uid of rsvpUsers) {
+      const allEventRows = await pool.query("SELECT id, title, category FROM events ORDER BY date_time ASC");
+      const eventIds = allEventRows.rows.map((r: any) => r.id);
+      const allUsers = [userId, ...seedUserIds].filter(Boolean);
+
+      const rsvpAssignments: Record<number, string[]> = {
+        0: [allUsers[0], allUsers[1], allUsers[2]],
+        1: [allUsers[0], allUsers[3]],
+        2: [allUsers[0], allUsers[1], allUsers[2], allUsers[3]],
+        3: [allUsers[0], allUsers[1]],
+        4: [allUsers[0], allUsers[2], allUsers[3]],
+        5: [allUsers[1], allUsers[2], allUsers[3]],
+        6: [allUsers[0], allUsers[3]],
+        7: [allUsers[0], allUsers[1]],
+        8: [allUsers[1], allUsers[2]],
+        9: [allUsers[0], allUsers[1], allUsers[3]],
+        10: [allUsers[0], allUsers[2]],
+        11: [allUsers[0], allUsers[1], allUsers[2]],
+        12: [allUsers[0], allUsers[1], allUsers[2], allUsers[3]],
+        13: [allUsers[2], allUsers[3]],
+        14: [allUsers[0], allUsers[2]],
+        15: [allUsers[0], allUsers[1], allUsers[3]],
+        16: [allUsers[1], allUsers[3]],
+        17: [allUsers[0], allUsers[2], allUsers[3]],
+      };
+
+      for (let i = 0; i < eventIds.length; i++) {
+        const usersForEvent = rsvpAssignments[i] || [allUsers[0]];
+        for (const uid of usersForEvent) {
           try {
-            const already = await storage.hasUserRsvpd(eventRow.id, uid);
+            const already = await storage.hasUserRsvpd(eventIds[i], uid);
             if (!already) {
-              await storage.createEventRsvp({ eventId: eventRow.id, userId: uid });
+              await storage.createEventRsvp({ eventId: eventIds[i], userId: uid });
             }
           } catch {}
         }

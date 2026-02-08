@@ -144,6 +144,10 @@ export const events = pgTable("events", {
   cost: text("cost"),
   rsvpLimit: integer("rsvp_limit"),
   locationDetails: text("location_details"),
+  dealExpiresAt: timestamp("deal_expires_at"),
+  priceInfo: text("price_info"),
+  isDeal: boolean("is_deal").default(false),
+  organizerName: text("organizer_name"),
 }, (table) => [
   index("events_category_idx").on(table.category),
 ]);

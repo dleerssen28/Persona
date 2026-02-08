@@ -10,25 +10,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   MapPin, Clock, Users, Hand, ChevronDown,
-  Filter, X, Mail, UserPlus
+  Filter, Tag, Sparkles, AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type EventCategory = "all" | "organized" | "custom";
+type EventFilter = "all" | "deals" | "campus" | "parties" | "study" | "shows";
 
-interface EventAttendee {
+interface MutualFriend {
   id: string;
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
+  matchPercent: number;
 }
 
-interface EventMatchedUser extends EventAttendee {
-  email: string | null;
-  matchScore: number;
-  color: string;
-  explanations: string[];
-  topClusters: string[];
+interface AttendeePreview {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
 }
 
 interface EventData {
@@ -40,13 +40,27 @@ interface EventData {
   dateTime: string | null;
   imageUrl: string | null;
   tags: string[] | null;
-  creatorName: string | null;
-  contactInfo: string | null;
-  attendeeCount: number | null;
-  matchScore: number;
+  organizerName: string | null;
+  clubName: string | null;
+  cost: string | null;
+  rsvpLimit: number | null;
+  locationDetails: string | null;
+  priceInfo: string | null;
+  isDeal: boolean;
+  dealExpiresAt: string | null;
+  personaScore: number;
+  socialScore: number;
+  urgencyScore: number;
+  finalScore: number;
+  urgencyLabel: string;
+  deadline: string | null;
+  mutualFriendsGoingCount: number;
+  mutualFriendsPreview: MutualFriend[];
+  attendeePreview: AttendeePreview[];
+  whyRecommended: string;
   hasRsvpd: boolean;
   rsvpCount: number;
-  attendees: EventAttendee[];
+  scoringMethod: string;
 }
 
 function formatEventDate(dateStr: string | null): string {
@@ -61,16 +75,34 @@ function formatEventDate(dateStr: string | null): string {
   });
 }
 
+function matchesFilter(event: EventData, filter: EventFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "deals") return event.isDeal || event.category === "deals";
+  if (filter === "campus") return event.category === "campus";
+  if (filter === "parties") return event.category === "parties";
+  if (filter === "study") return event.category === "study";
+  if (filter === "shows") return event.category === "shows";
+  return true;
+}
+
+const FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
+  { value: "all", label: "For You" },
+  { value: "deals", label: "Deals" },
+  { value: "campus", label: "Campus" },
+  { value: "parties", label: "Parties" },
+  { value: "study", label: "Study" },
+  { value: "shows", label: "Shows" },
+];
+
 export default function EventsPage() {
-  const [category, setCategory] = useState<EventCategory>("all");
+  const [filter, setFilter] = useState<EventFilter>("all");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const queryParam = category === "all" ? "" : `?category=${category}`;
   const { data: events, isLoading } = useQuery<EventData[]>({
-    queryKey: ["/api/events", category],
+    queryKey: ["/api/events/for-you"],
     queryFn: async () => {
-      const res = await fetch(`/api/events${queryParam}`, { credentials: "include" });
+      const res = await fetch("/api/events/for-you", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch events");
       return res.json();
     },
@@ -98,25 +130,25 @@ export default function EventsPage() {
     );
   }
 
-  const filteredEvents = events || [];
+  const filteredEvents = (events || []).filter(e => matchesFilter(e, filter));
 
   return (
     <div className="flex flex-col" style={{ height: "calc(100dvh - 3.5rem - 3.5rem)" }}>
-      <div className="flex items-center gap-2 px-4 py-2 bg-background/95 backdrop-blur-sm shrink-0 border-b border-border/30">
+      <div className="flex items-center gap-2 px-4 py-2 bg-background/95 backdrop-blur-sm shrink-0 border-b border-border/30 overflow-x-auto no-scrollbar">
         <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-        {(["all", "organized", "custom"] as EventCategory[]).map((cat) => (
+        {FILTER_OPTIONS.map((opt) => (
           <button
-            key={cat}
-            onClick={() => { setCategory(cat); setCurrentIndex(0); }}
+            key={opt.value}
+            onClick={() => { setFilter(opt.value); setCurrentIndex(0); }}
             className={cn(
               "px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors border shrink-0",
-              category === cat
+              filter === opt.value
                 ? "bg-primary/15 text-primary border-primary/30"
                 : "text-muted-foreground border-border/50"
             )}
-            data-testid={`button-filter-${cat}`}
+            data-testid={`button-filter-${opt.value}`}
           >
-            {cat === "all" ? "All Events" : cat === "organized" ? "Organized" : "Custom"}
+            {opt.label}
           </button>
         ))}
       </div>
@@ -167,7 +199,6 @@ export default function EventsPage() {
 
 function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean }) {
   const { toast } = useToast();
-  const [showMatches, setShowMatches] = useState(false);
   const eventImage = getEventImage(event.imageUrl);
 
   const rsvpMutation = useMutation({
@@ -175,22 +206,20 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
       await apiRequest("POST", `/api/events/${event.id}/rsvp`, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/for-you"] });
     },
     onError: (err) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
-  const { data: matchedUsers, isLoading: matchesLoading } = useQuery<EventMatchedUser[]>({
-    queryKey: ["/api/events", event.id, "matches"],
-    queryFn: async () => {
-      const res = await fetch(`/api/events/${event.id}/matches`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    enabled: showMatches,
-  });
+  const urgencyColor = event.urgencyScore >= 90
+    ? "bg-red-500/20 text-red-300 border-red-500/40"
+    : event.urgencyScore >= 75
+    ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
+    : event.urgencyScore >= 50
+    ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/40"
+    : "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
 
   return (
     <div
@@ -204,23 +233,30 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/10" />
 
-      <div className="absolute top-3 left-3">
+      <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
         <Badge
           variant="outline"
-          className={cn(
-            "text-xs border",
-            event.category === "organized"
-              ? "bg-blue-500/20 text-blue-300 border-blue-500/40"
-              : "bg-purple-500/20 text-purple-300 border-purple-500/40"
-          )}
+          className={cn("text-xs border", getCategoryStyle(event.category))}
           data-testid={`badge-category-${event.id}`}
         >
-          {event.category === "organized" ? "Organized" : "Custom"}
+          {formatCategory(event.category)}
         </Badge>
+        {event.isDeal && (
+          <Badge variant="outline" className="text-xs border bg-emerald-500/20 text-emerald-300 border-emerald-500/40" data-testid={`badge-deal-${event.id}`}>
+            <Tag className="h-3 w-3 mr-1" />
+            Deal
+          </Badge>
+        )}
+        {event.urgencyScore >= 50 && (
+          <Badge variant="outline" className={cn("text-xs border", urgencyColor)} data-testid={`badge-urgency-${event.id}`}>
+            <AlertCircle className="h-3 w-3 mr-1" />
+            {event.urgencyLabel}
+          </Badge>
+        )}
       </div>
 
       <div className="absolute top-3 right-3">
-        <MatchPill score={event.matchScore} size="sm" data-testid={`match-score-${event.id}`} />
+        <MatchPill score={event.finalScore} size="sm" data-testid={`match-score-${event.id}`} />
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-4 space-y-3">
@@ -228,8 +264,8 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
           <h2 className="text-2xl font-bold text-white leading-tight" data-testid={`text-event-title-${event.id}`}>
             {event.title}
           </h2>
-          {event.creatorName && (
-            <p className="text-sm text-white/60 mt-0.5">by {event.creatorName}</p>
+          {event.organizerName && (
+            <p className="text-sm text-white/60 mt-0.5">by {event.organizerName}</p>
           )}
         </div>
 
@@ -237,6 +273,13 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
           <p className="text-sm text-white/80 line-clamp-2" data-testid={`text-event-desc-${event.id}`}>
             {event.description}
           </p>
+        )}
+
+        {event.priceInfo && (
+          <div className="flex items-center gap-2 text-emerald-300 text-sm font-medium" data-testid={`text-price-${event.id}`}>
+            <Tag className="h-3.5 w-3.5 shrink-0" />
+            <span>{event.priceInfo}</span>
+          </div>
         )}
 
         <div className="flex flex-col gap-1.5">
@@ -254,39 +297,34 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
           )}
           <div className="flex items-center gap-2 text-white/70 text-sm">
             <Users className="h-3.5 w-3.5 shrink-0" />
-            <span>{(event.attendeeCount || 0) + event.rsvpCount} going</span>
+            <span>{event.rsvpCount} going</span>
           </div>
         </div>
 
-        {event.tags && event.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {event.tags.slice(0, 4).map((tag) => (
-              <span
-                key={tag}
-                className="text-[10px] px-2 py-0.5 rounded-md bg-white/10 text-white/70 border border-white/10"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {event.attendees.length > 0 && (
-          <div className="flex items-center gap-2">
+        {event.mutualFriendsGoingCount > 0 && (
+          <div className="flex items-center gap-2" data-testid={`mutuals-${event.id}`}>
             <div className="flex -space-x-2">
-              {event.attendees.slice(0, 5).map((a) => (
-                <Avatar key={a.id} className="h-6 w-6 border-2 border-black/50">
-                  <AvatarImage src={a.profileImageUrl || undefined} />
+              {event.mutualFriendsPreview.slice(0, 3).map((f) => (
+                <Avatar key={f.id} className="h-6 w-6 border-2 border-black/50">
+                  <AvatarImage src={f.profileImageUrl || undefined} />
                   <AvatarFallback className="text-[9px] bg-zinc-700 text-white">
-                    {(a.firstName?.[0] || "") + (a.lastName?.[0] || "")}
+                    {(f.firstName?.[0] || "") + (f.lastName?.[0] || "")}
                   </AvatarFallback>
                 </Avatar>
               ))}
             </div>
-            <span className="text-xs text-white/50">
-              {event.attendees.slice(0, 2).map(a => a.firstName).join(", ")}
-              {event.attendees.length > 2 && ` +${event.attendees.length - 2} more`}
+            <span className="text-xs text-white/60">
+              {event.mutualFriendsPreview.slice(0, 2).map(f => f.firstName).join(", ")}
+              {event.mutualFriendsGoingCount > 2 && ` +${event.mutualFriendsGoingCount - 2} more`}
+              {" "}going
             </span>
+          </div>
+        )}
+
+        {event.whyRecommended && (
+          <div className="flex items-start gap-2 text-xs text-white/50" data-testid={`why-${event.id}`}>
+            <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
+            <span>{event.whyRecommended}</span>
           </div>
         )}
 
@@ -306,111 +344,30 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
             <Hand className="h-4 w-4 mr-2" />
             {event.hasRsvpd ? "Going" : "I want to go"}
           </Button>
-
-          <Button
-            variant="outline"
-            size="icon"
-            className="bg-white/10 text-white border-white/20 backdrop-blur-sm"
-            onClick={() => setShowMatches(!showMatches)}
-            data-testid={`button-find-people-${event.id}`}
-          >
-            <UserPlus className="h-4 w-4" />
-          </Button>
         </div>
-
-        {showMatches && (
-          <MatchedAttendeesPanel
-            users={matchedUsers || []}
-            loading={matchesLoading}
-            onClose={() => setShowMatches(false)}
-            contactInfo={event.contactInfo}
-          />
-        )}
       </div>
     </div>
   );
 }
 
-function MatchedAttendeesPanel({
-  users,
-  loading,
-  onClose,
-  contactInfo,
-}: {
-  users: EventMatchedUser[];
-  loading: boolean;
-  onClose: () => void;
-  contactInfo: string | null;
-}) {
-  return (
-    <div
-      className="bg-black/80 backdrop-blur-xl rounded-md border border-white/10 p-3 space-y-2 max-h-48 overflow-y-auto"
-      data-testid="panel-matched-attendees"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-white">People with similar taste</h3>
-        <Button size="icon" variant="ghost" className="h-6 w-6 text-white/50" onClick={onClose}>
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+function getCategoryStyle(category: string): string {
+  switch (category) {
+    case "parties": return "bg-pink-500/20 text-pink-300 border-pink-500/40";
+    case "deals": return "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+    case "campus": return "bg-blue-500/20 text-blue-300 border-blue-500/40";
+    case "study": return "bg-amber-500/20 text-amber-300 border-amber-500/40";
+    case "shows": return "bg-purple-500/20 text-purple-300 border-purple-500/40";
+    default: return "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
+  }
+}
 
-      {loading ? (
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-full bg-white/10" />
-          <Skeleton className="h-10 w-full bg-white/10" />
-        </div>
-      ) : users.length === 0 ? (
-        <div className="text-center py-2">
-          <p className="text-xs text-white/50">No matched attendees yet. Be the first to RSVP!</p>
-          {contactInfo && (
-            <div className="flex items-center gap-1.5 justify-center mt-2 text-xs text-white/60">
-              <Mail className="h-3 w-3" />
-              <span>{contactInfo}</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {users.map((user) => (
-            <div
-              key={user.id}
-              className="flex items-center gap-2 p-1.5 rounded-md bg-white/5"
-              data-testid={`matched-user-${user.id}`}
-            >
-              <Avatar className="h-7 w-7">
-                <AvatarImage src={user.profileImageUrl || undefined} />
-                <AvatarFallback className="text-[9px] bg-zinc-700 text-white">
-                  {(user.firstName?.[0] || "") + (user.lastName?.[0] || "")}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-medium text-white truncate">
-                    {user.firstName} {user.lastName}
-                  </span>
-                  <MatchPill score={user.matchScore} size="sm" showLabel={false} />
-                </div>
-                {user.email && (
-                  <p className="text-[10px] text-white/40 truncate">{user.email}</p>
-                )}
-                {user.topClusters.length > 0 && (
-                  <div className="flex gap-1 mt-0.5">
-                    {user.topClusters.slice(0, 2).map(c => (
-                      <span key={c} className="text-[9px] px-1 py-0.5 rounded bg-white/10 text-white/50">{c}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {contactInfo && (
-            <div className="flex items-center gap-1.5 pt-1 text-xs text-white/40 border-t border-white/10">
-              <Mail className="h-3 w-3" />
-              <span>Event contact: {contactInfo}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+function formatCategory(category: string): string {
+  switch (category) {
+    case "parties": return "Party";
+    case "deals": return "Deal";
+    case "campus": return "Campus";
+    case "study": return "Study";
+    case "shows": return "Show";
+    default: return category.charAt(0).toUpperCase() + category.slice(1);
+  }
 }

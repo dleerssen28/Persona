@@ -20,7 +20,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 ### Pages
 - `/` - Landing page (unauthenticated) / Profile page (authenticated)
 - `/recommendations` - Club recommendations across 5 campus domains
-- `/events` - Event discovery with geolocation-aware scoring
+- `/events` - Event discovery with persona+social+urgency scoring
 - `/social` - Social matching with compatibility scores
 
 ### Domains (Campus)
@@ -52,7 +52,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `POST /api/interactions` - Record user interaction (like/love/skip/save)
 - `GET /api/social/matches` - Get matched users with scores
 - `GET /api/explore/hobbies` - Get hobby recommendations
-- `GET /api/events/for-you` - Personalized events with urgency scoring + mutualsGoing
+- `GET /api/events/for-you` - Personalized events: finalScore = 0.45*personaScore + 0.30*socialScore + 0.25*urgencyScore
 - `POST /api/demo/bootstrap` - Auto-create demo profile for authenticated user
 - `POST /api/demo/reset` - Reset demo state (dev-only auth bypass)
 - `GET /api/demo/story` - Demo script with talking points
@@ -78,10 +78,27 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - Computed from signupDeadline, duesDeadline, and dateTime
 - Labels: "last chance" (24h), "closing soon" (48h), "this week" (72h), "upcoming" (7d), "next week" (14d), "plenty of time"
 
-### Mutual Friends / Social Context
-- Events include mutualsGoing (compatible students attending), mutualsGoingCount, attendeePreview (first 3 attendees), whyThisEvent
-- "Mutuals" are defined as attendees with >65% embedding match to the current user
-- whyThisEvent combines taste alignment + mutuals count + club name
+### Event Scoring (Events Tab)
+- **finalScore** = 0.45 * personaScore + 0.30 * socialScore + 0.25 * urgencyScore
+- **personaScore**: Embedding cosine similarity between user taste profile and event embedding
+- **socialScore**: (avgSimilarity * 0.5 + friendBonus + attendeeBonus), capped at 100, min 15
+- **urgencyScore**: Time-based urgency (100 for <24h, descending)
+- Events include mutualFriendsGoingCount, mutualFriendsPreview (top 3), attendeePreview, whyRecommended
+- "Mutuals" are attendees with >65% embedding match to the current user
+- whyRecommended combines friends going + persona alignment + urgency + deal status
+
+### Event Categories
+- `parties` - Nightlife, bars, social gatherings (pink badges)
+- `deals` - Food deals, student discounts, BOGO offers (emerald badges)
+- `campus` - Campus events, tailgates, watch parties, pop-ups (blue badges)
+- `study` - Study groups, exam prep, academic meetups (amber badges)
+- `shows` - Concerts, open mics, vinyl markets, live music (purple badges)
+
+### Event Data Model (New Fields)
+- `dealExpiresAt` (timestamp) - When a deal/promo expires
+- `priceInfo` (text) - Human-readable price/deal details
+- `isDeal` (boolean) - Whether event has a deal/promotion
+- `organizerName` (text) - Event organizer name (separate from clubName)
 
 ### Taste Engine (Explainability Layer)
 - Trait-based similarity scoring across 8 axes: novelty, intensity, cozy, strategy, social, creativity, nostalgia, adventure
@@ -111,7 +128,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `interactions` - User interactions with items (like/love/skip/save)
 - `matches` - Cached match computations
 - `hobbies` - Campus hobby entries with trait values + embedding vector(384)
-- `events` - Club events with trait values + embedding vector(384) + locationLat/locationLng + clubId/clubName/signupDeadline/duesDeadline/cost/rsvpLimit/locationDetails
+- `events` - Lifestyle events with trait values + embedding vector(384) + locationLat/locationLng + dealExpiresAt/priceInfo/isDeal/organizerName + categories: parties/deals/campus/study/shows
 - `event_rsvps` - RSVP records linking users to events
 
 ### Key Backend Files
@@ -124,7 +141,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 
 ### Seed Data
 - 50 campus clubs: 10 per domain (academic, professional, social, sports, volunteering)
-- 16 club events within 14-day rolling window using daysFromNow helper
+- 18 lifestyle events (parties, deals, study groups, concerts, campus events) within 14-day rolling window
 - 16 campus-specific hobbies (intramural sports, hackathon building, tailgating, etc.)
 - 3 seed users: Colin (Engineering Leader), Andy (Creative Builder), Devon (Service Leader)
 - Demo user profile: Tech Innovator / Hackathon Builder / Research Explorer

@@ -1,0 +1,307 @@
+We are upgrading the Events tab to its final design.
+This is NOT a redesign of the UI and NOT a rebuild of the app.
+Keep all layout, scroller behavior, routing, and components exactly as they are.
+
+We are ONLY changing:
+
+what data Events displays
+
+how Events are ranked
+
+what fields are shown
+
+The Clubs tab must remain unchanged and fully functional.
+
+Product Vision (Important Context)
+
+Clubs = long-term involvement
+Events = short-term experiences and city/campus happenings
+
+Events should now represent:
+
+Local parties
+
+Deals and food offers
+
+Campus happenings
+
+Study groups
+
+Concerts and shows
+
+Sports watch events
+
+Popups and niche local activities
+
+Events are not recruiting organizations and should not show club meetings.
+
+Core Requirements
+
+Events must now be ranked using AI based on three factors:
+
+1. Persona Match (existing embeddings)
+
+Reuse the existing embedding system.
+
+Use:
+
+event embedding
+
+user taste embedding
+
+Do NOT introduce new embedding logic.
+
+2. Social Gravity
+
+Events with more friends or mutuals attending must rank higher.
+
+Use:
+
+interactions table
+
+existing user embeddings
+
+Social score inputs:
+
+number of direct friends attending
+
+number of mutuals attending
+
+similarity of attendees to user
+
+3. Urgency
+
+Reuse existing urgency scoring logic.
+
+Events happening soon or expiring soon should rank higher.
+
+Ranking Formula
+
+Implement this scoring logic inside the events ranking pipeline:
+
+finalScore =
+0.45 * personaMatch +
+0.30 * socialScore +
+0.25 * urgencyScore
+
+Do not remove existing scoring fields.
+Add finalScore to ranking internally.
+
+Backend Changes
+
+Modify the existing events endpoint:
+
+GET /api/events/for-you
+
+Do NOT change route name or response structure dramatically.
+
+Enhance the response to include:
+
+mutualFriendsGoingCount
+
+mutualFriendsPreview
+
+urgencyLabel
+
+urgencyScore
+
+socialScore
+
+personaScore
+
+finalScore
+
+whyRecommended (string explanation)
+
+Example explanation:
+"Ranked higher because 2 friends are going, matches your interests in live music, and happens tonight."
+
+This explanation must be generated from actual scoring signals.
+
+Event Data Model Enhancements
+
+Ensure events table supports:
+
+category
+dealExpiresAt
+priceInfo
+isDeal
+organizerName
+
+These fields are optional and should not break existing data.
+
+Seed Data Upgrade
+
+Rewrite event seed data so Events are realistic.
+
+Create events like:
+
+Top Golf Student Night – 30% off groups
+Raising Cane’s Free Combo Thursday
+Northgate Party Friday Night
+Campus Thrift Pop-Up
+Study Group – ECEN 350 Midterm Prep
+Aggie Baseball Watch Party
+Bryan Amphitheater Indie Concert
+
+Each event must include:
+
+title
+
+description
+
+category
+
+time
+
+location
+
+price or deal info
+
+realistic tags
+
+embedding generated from description
+
+Ensure 15–20 events exist in seed data.
+
+Social Attendance Simulation
+
+During demo/reset:
+
+Seed users must attend different events
+
+Ensure overlapping attendance
+
+Ensure at least 2–4 mutual overlaps exist
+
+This is necessary for socialScore to work.
+
+Frontend Changes (Events Tab Only)
+
+Do NOT redesign layout.
+
+Modify event card content to display:
+
+Title
+Description
+Time
+Location
+Deal or price info
+Mutual friends going
+Urgency badge
+Why recommended
+
+If any field missing, hide gracefully.
+
+Feed Behavior
+
+Events tab should now behave as:
+
+Single continuous feed ranked by AI
+Highest finalScore appears first
+
+Do NOT add complicated filtering UI.
+
+Optional small category chips:
+Deals
+Campus
+Parties
+Study
+Shows
+
+Filtering should only filter results, not change ranking logic.
+
+Explanation Visibility
+
+Each event card must show one short explanation:
+
+Example:
+"2 friends going · Matches your interests · Happening today"
+
+This must come from backend scoring signals.
+
+Mutual Friends Logic
+
+Mutuals should be determined using:
+
+interactions
+
+embedding similarity
+
+overlapping attendance
+
+Return:
+mutualFriendsPreview = first 3 names
+mutualFriendsGoingCount = integer
+
+ML Pipeline Requirements
+
+Do NOT remove:
+
+embeddings.ts
+
+hybrid scoring engine
+
+taste engine
+
+Events must reuse the same embedding pipeline used for clubs.
+
+Embedding dimension must remain 384.
+
+Demo Proof Mode
+
+Ensure these endpoints still work:
+
+/api/embedding-similarity-sanity
+/api/demo/reset
+/api/events/for-you
+
+Verify:
+Events return urgency + social signals
+Mutuals appear
+Explanations appear
+
+UI Smoke Test Requirements
+
+Verify:
+
+Events tab shows:
+Deals
+Parties
+Study groups
+Concerts
+
+NOT clubs.
+
+Clubs tab remains unchanged and fully functional.
+
+Performance Requirement
+
+Do not introduce slow queries.
+
+All ranking must run within existing query pattern.
+
+Final Goal
+
+Events tab should feel like:
+
+"What’s happening around me today that I’d actually want to go to — and who I know is going."
+
+It must feel:
+Alive
+Social
+Timely
+Relevant
+
+After Implementation
+
+Run:
+
+demo/reset
+events/for-you
+
+Confirm:
+Mutual friends show
+Urgency badges show
+Explanations show
+Ranking changes based on attendance
