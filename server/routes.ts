@@ -848,17 +848,101 @@ export async function registerRoutes(
           urgencyScore * 0.25
         )));
 
-        const whyParts: string[] = [];
-        if (mutualFriendsGoingCount > 0) {
-          whyParts.push(`${mutualFriendsGoingCount} ${mutualFriendsGoingCount === 1 ? "friend" : "friends"} going`);
+        const cat = event.category || "misc";
+        const scoringMethod = hasEmbeddings ? "embedding" : "trait_fallback";
+        const fallbackReason = hasEmbeddings ? null :
+          !isValidEmbedding(profile.embedding) && !isValidEmbedding(event.embedding) ? "missing_both_embeddings" :
+          !isValidEmbedding(profile.embedding) ? "missing_user_embedding" : "missing_item_embedding";
+
+        const userTraits = {
+          novelty: profile.traitNovelty ?? 0.5,
+          intensity: profile.traitIntensity ?? 0.5,
+          cozy: profile.traitCozy ?? 0.5,
+          strategy: profile.traitStrategy ?? 0.5,
+          social: profile.traitSocial ?? 0.5,
+          creativity: profile.traitCreativity ?? 0.5,
+          nostalgia: profile.traitNostalgia ?? 0.5,
+          adventure: profile.traitAdventure ?? 0.5,
+        };
+        const eventTraits = {
+          novelty: event.traitNovelty ?? 0.5,
+          intensity: event.traitIntensity ?? 0.5,
+          cozy: event.traitCozy ?? 0.5,
+          strategy: event.traitStrategy ?? 0.5,
+          social: event.traitSocial ?? 0.5,
+          creativity: event.traitCreativity ?? 0.5,
+          nostalgia: event.traitNostalgia ?? 0.5,
+          adventure: event.traitAdventure ?? 0.5,
+        };
+
+        const topUserTraits = Object.entries(userTraits)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([k]) => k);
+
+        const topEventTraits = Object.entries(eventTraits)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2)
+          .map(([k]) => k);
+
+        const overlappingTraits = topUserTraits.filter(t => topEventTraits.includes(t));
+
+        let whyShort = "";
+        if (cat === "study") {
+          const studyTraits = ["strategy", "intensity"].filter(t => userTraits[t as keyof typeof userTraits] >= 0.6);
+          if (studyTraits.length > 0 && mutualFriendsGoingCount > 0) {
+            whyShort = `High ${studyTraits.join(" + ")} alignment; ${mutualFriendsGoingCount} mutuals going`;
+          } else if (studyTraits.length > 0) {
+            whyShort = `Recommended for your ${studyTraits.join(" + ")} focus`;
+          } else {
+            whyShort = "Study session matching your academic profile";
+          }
+        } else if (cat === "deals") {
+          const urgNote = urgencyScore >= 90 ? "Ending today" : urgencyScore >= 75 ? "Closing soon" : "Limited time";
+          const friendNote = mutualFriendsGoingCount > 0 ? ` + ${mutualFriendsGoingCount} compatible students saved this` : "";
+          whyShort = `${urgNote} — high value for your persona${friendNote}`;
+        } else if (cat === "parties") {
+          const socialLevel = userTraits.social >= 0.7 ? "High" : "Good";
+          const timeNote = urgencyScore >= 75 ? " + happening soon" : urgencyScore >= 50 ? " + this week" : "";
+          whyShort = `${socialLevel} social-energy match${timeNote}`;
+        } else if (cat === "shows") {
+          const creativityNote = userTraits.creativity >= 0.6 ? "Matches your creative side" : "Aligns with your interests";
+          whyShort = mutualFriendsGoingCount > 0 ? `${creativityNote} + ${mutualFriendsGoingCount} friends going` : creativityNote;
+        } else if (cat === "campus") {
+          whyShort = mutualFriendsGoingCount > 0
+            ? `${mutualFriendsGoingCount} friends going + campus community event`
+            : personaScore >= 70 ? "Strong match to your campus interests" : "Popular campus event near you";
+        } else {
+          if (overlappingTraits.length > 0) {
+            whyShort = `Matches your ${overlappingTraits.join(" + ")} energy`;
+          } else if (mutualFriendsGoingCount > 0) {
+            whyShort = `${mutualFriendsGoingCount} friends going + aligns with your profile`;
+          } else {
+            whyShort = personaScore >= 70 ? "Strong persona alignment" : "Discover something new around campus";
+          }
         }
-        if (personaScore >= 75) whyParts.push("Matches your interests");
-        else if (personaScore >= 60) whyParts.push("Aligns with your vibe");
-        if (urgencyScore >= 90) whyParts.push("Happening today");
-        else if (urgencyScore >= 75) whyParts.push("Happening soon");
-        else if (urgencyScore >= 50) whyParts.push("Coming up this week");
-        if (event.isDeal) whyParts.push("Deal available");
-        const whyRecommended = whyParts.length > 0 ? whyParts.join(" · ") : "Discover something new around campus";
+
+        const whyLongLines: string[] = [];
+        whyLongLines.push(`Your top traits (${topUserTraits.join(", ")}) ${overlappingTraits.length > 0 ? `overlap with this event's ${overlappingTraits.join(", ")} profile` : `complement this event's ${topEventTraits.join(", ")} focus`}.`);
+        if (mutualFriendsGoingCount > 0) {
+          whyLongLines.push(`${mutualFriendsGoingCount} compatible ${mutualFriendsGoingCount === 1 ? "student" : "students"} (>65% taste match) attending — social fit is strong.`);
+        } else if (socialScoreCount > 0) {
+          whyLongLines.push(`${socialScoreCount} attendees with taste profiles analyzed; avg compatibility factored into ranking.`);
+        }
+        if (urgencyScore >= 90) whyLongLines.push("Happening today or deadline imminent — urgency weight boosted.");
+        else if (urgencyScore >= 50) whyLongLines.push(`Event is ${urgency.urgencyLabel} — time relevance factored in.`);
+        if (event.isDeal) whyLongLines.push("Active deal/promotion detected — value signal boosted.");
+        const whyLong = whyLongLines.join(" ");
+
+        const matchMathLines: string[] = [
+          `Score: ${finalScore}% (personaScore ${personaScore}% × 0.45 + socialScore ${socialScore}% × 0.30 + urgencyScore ${urgencyScore}% × 0.25)`,
+          `Persona: ML text embeddings (MiniLM-L6-v2, 384-dim) → cosine similarity between your Taste DNA and event embedding.`,
+          `Social: avg attendee compatibility (${socialScoreCount} checked) + friend bonus (${mutualFriendsGoingCount} mutuals).`,
+        ];
+        if (scoringMethod === "trait_fallback") {
+          matchMathLines.push(`Fallback: ${fallbackReason || "embeddings unavailable"} — using trait-based scoring.`);
+        }
+        const matchMathTooltip = matchMathLines.join("\n");
 
         return {
           id: event.id,
@@ -886,10 +970,14 @@ export async function registerRoutes(
           mutualFriendsGoingCount,
           mutualFriendsPreview: mutualFriendsPreview.slice(0, 3),
           attendeePreview,
-          whyRecommended,
+          whyShort,
+          whyLong,
+          matchMathTooltip,
+          whyRecommended: whyShort,
           hasRsvpd,
           rsvpCount,
-          scoringMethod: hasEmbeddings ? "embedding" : "trait_fallback",
+          scoringMethod,
+          fallbackReason,
           scoringFormula: "0.45*personaScore + 0.30*socialScore + 0.25*urgencyScore",
         };
       }));
@@ -1186,6 +1274,12 @@ export async function registerRoutes(
         15: [allUsers[0], allUsers[1], allUsers[3]],
         16: [allUsers[1], allUsers[3]],
         17: [allUsers[0], allUsers[2], allUsers[3]],
+        18: [allUsers[0], allUsers[1], allUsers[2]],
+        19: [allUsers[0], allUsers[2], allUsers[3]],
+        20: [allUsers[1], allUsers[2]],
+        21: [allUsers[0], allUsers[1], allUsers[2], allUsers[3]],
+        22: [allUsers[0], allUsers[3]],
+        23: [allUsers[1], allUsers[2], allUsers[3]],
       };
 
       for (let i = 0; i < eventIds.length; i++) {

@@ -93,6 +93,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `campus` - Campus events, tailgates, watch parties, pop-ups (blue badges)
 - `study` - Study groups, exam prep, academic meetups (amber badges)
 - `shows` - Concerts, open mics, vinyl markets, live music (purple badges)
+- `misc` - Farmers markets, festivals, charity runs, art walks (teal badges)
 
 ### Event Data Model (New Fields)
 - `dealExpiresAt` (timestamp) - When a deal/promo expires
@@ -128,7 +129,7 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `interactions` - User interactions with items (like/love/skip/save)
 - `matches` - Cached match computations
 - `hobbies` - Campus hobby entries with trait values + embedding vector(384)
-- `events` - Lifestyle events with trait values + embedding vector(384) + locationLat/locationLng + dealExpiresAt/priceInfo/isDeal/organizerName + categories: parties/deals/campus/study/shows
+- `events` - Lifestyle events with trait values + embedding vector(384) + locationLat/locationLng + dealExpiresAt/priceInfo/isDeal/organizerName + categories: parties/deals/campus/study/shows/misc
 - `event_rsvps` - RSVP records linking users to events
 
 ### Key Backend Files
@@ -136,12 +137,12 @@ Persona is an AI-powered campus clubs discovery platform for TAMU that builds a 
 - `server/collaborative-filtering.ts` - Embedding-based neighbor CF with weighted action aggregation
 - `server/embeddings.ts` - Local @xenova/transformers embeddings (all-MiniLM-L6-v2, 384-dim), recomputeTasteEmbedding (synchronous), checkEmbeddingHealth
 - `server/taste-engine.ts` - 8-axis trait algebra (explainability layer only)
-- `server/seed.ts` - 50 TAMU campus clubs + 16 events + 16 hobbies with embedding pipeline
+- `server/seed.ts` - 50 TAMU campus clubs + 24 events + 16 hobbies with embedding pipeline
 - `server/routes.ts` - Express API routes including debug/health, demo/reset, and admin/backfill endpoints
 
 ### Seed Data
 - 50 campus clubs: 10 per domain (academic, professional, social, sports, volunteering)
-- 18 lifestyle events (parties, deals, study groups, concerts, campus events) within 14-day rolling window
+- 24 lifestyle events (parties, deals, study groups, concerts, campus events, misc) within 14-day rolling window
 - 16 campus-specific hobbies (intramural sports, hackathon building, tailgating, etc.)
 - 3 seed users: Colin (Engineering Leader), Andy (Creative Builder), Devon (Service Leader)
 - Demo user profile: Tech Innovator / Hackathon Builder / Research Explorer

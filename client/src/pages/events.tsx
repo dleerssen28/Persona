@@ -9,12 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   MapPin, Clock, Users, Hand, ChevronDown,
-  Filter, Tag, Sparkles, AlertCircle
+  Filter, Tag, Sparkles, AlertCircle, Info
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type EventFilter = "all" | "deals" | "campus" | "parties" | "study" | "shows";
+type EventFilter = "all" | "deals" | "campus" | "parties" | "study" | "shows" | "misc";
 
 interface MutualFriend {
   id: string;
@@ -57,10 +62,14 @@ interface EventData {
   mutualFriendsGoingCount: number;
   mutualFriendsPreview: MutualFriend[];
   attendeePreview: AttendeePreview[];
+  whyShort: string;
+  whyLong: string;
+  matchMathTooltip: string;
   whyRecommended: string;
   hasRsvpd: boolean;
   rsvpCount: number;
   scoringMethod: string;
+  fallbackReason: string | null;
 }
 
 function formatEventDate(dateStr: string | null): string {
@@ -75,14 +84,15 @@ function formatEventDate(dateStr: string | null): string {
   });
 }
 
-function matchesFilter(event: EventData, filter: EventFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "deals") return event.isDeal || event.category === "deals";
-  if (filter === "campus") return event.category === "campus";
-  if (filter === "parties") return event.category === "parties";
-  if (filter === "study") return event.category === "study";
-  if (filter === "shows") return event.category === "shows";
-  return true;
+function matchesFilters(event: EventData, filters: Set<EventFilter>): boolean {
+  if (filters.size === 0 || filters.has("all")) return true;
+  if (filters.has("deals") && (event.isDeal || event.category === "deals")) return true;
+  if (filters.has("campus") && event.category === "campus") return true;
+  if (filters.has("parties") && event.category === "parties") return true;
+  if (filters.has("study") && event.category === "study") return true;
+  if (filters.has("shows") && event.category === "shows") return true;
+  if (filters.has("misc") && event.category === "misc") return true;
+  return false;
 }
 
 const FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
@@ -92,10 +102,11 @@ const FILTER_OPTIONS: { value: EventFilter; label: string }[] = [
   { value: "parties", label: "Parties" },
   { value: "study", label: "Study" },
   { value: "shows", label: "Shows" },
+  { value: "misc", label: "Misc" },
 ];
 
 export default function EventsPage() {
-  const [filter, setFilter] = useState<EventFilter>("all");
+  const [activeFilters, setActiveFilters] = useState<Set<EventFilter>>(() => new Set<EventFilter>(["all"]));
   const scrollRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -118,6 +129,24 @@ export default function EventsPage() {
     }
   }, []);
 
+  const toggleFilter = useCallback((filter: EventFilter) => {
+    setActiveFilters(prev => {
+      const next = new Set<EventFilter>(prev);
+      if (filter === "all") {
+        return new Set<EventFilter>(["all"]);
+      }
+      next.delete("all");
+      if (next.has(filter)) {
+        next.delete(filter);
+      } else {
+        next.add(filter);
+      }
+      if (next.size === 0) return new Set<EventFilter>(["all"]);
+      return next;
+    });
+    setCurrentIndex(0);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center" style={{ height: "calc(100dvh - 3.5rem - 3.5rem)" }}>
@@ -130,7 +159,7 @@ export default function EventsPage() {
     );
   }
 
-  const filteredEvents = (events || []).filter(e => matchesFilter(e, filter));
+  const filteredEvents = (events || []).filter(e => matchesFilters(e, activeFilters));
 
   return (
     <div className="flex flex-col" style={{ height: "calc(100dvh - 3.5rem - 3.5rem)" }}>
@@ -139,10 +168,10 @@ export default function EventsPage() {
         {FILTER_OPTIONS.map((opt) => (
           <button
             key={opt.value}
-            onClick={() => { setFilter(opt.value); setCurrentIndex(0); }}
+            onClick={() => toggleFilter(opt.value)}
             className={cn(
               "px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors border shrink-0",
-              filter === opt.value
+              activeFilters.has(opt.value)
                 ? "bg-primary/15 text-primary border-primary/30"
                 : "text-muted-foreground border-border/50"
             )}
@@ -236,19 +265,19 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
       <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
         <Badge
           variant="outline"
-          className={cn("text-xs border", getCategoryStyle(event.category))}
+          className={cn("text-xs border no-default-hover-elevate no-default-active-elevate", getCategoryStyle(event.category))}
           data-testid={`badge-category-${event.id}`}
         >
           {formatCategory(event.category)}
         </Badge>
         {event.isDeal && (
-          <Badge variant="outline" className="text-xs border bg-emerald-500/20 text-emerald-300 border-emerald-500/40" data-testid={`badge-deal-${event.id}`}>
+          <Badge variant="outline" className="text-xs border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-deal-${event.id}`}>
             <Tag className="h-3 w-3 mr-1" />
             Deal
           </Badge>
         )}
         {event.urgencyScore >= 50 && (
-          <Badge variant="outline" className={cn("text-xs border", urgencyColor)} data-testid={`badge-urgency-${event.id}`}>
+          <Badge variant="outline" className={cn("text-xs border no-default-hover-elevate no-default-active-elevate", urgencyColor)} data-testid={`badge-urgency-${event.id}`}>
             <AlertCircle className="h-3 w-3 mr-1" />
             {event.urgencyLabel}
           </Badge>
@@ -256,7 +285,22 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
       </div>
 
       <div className="absolute top-3 right-3">
-        <MatchPill score={event.finalScore} size="sm" data-testid={`match-score-${event.id}`} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div data-testid={`match-score-${event.id}`}>
+              <MatchPill score={event.finalScore} size="sm" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-xs bg-zinc-900 text-zinc-100 border-zinc-700 p-3" data-testid={`tooltip-match-${event.id}`}>
+            <div className="space-y-1.5 text-xs">
+              {event.matchMathTooltip?.split("\n").map((line, i) => (
+                <p key={i} className={i === 0 ? "font-medium text-white" : "text-zinc-300"}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-4 space-y-3">
@@ -321,11 +365,21 @@ function EventCard({ event, isVisible }: { event: EventData; isVisible: boolean 
           </div>
         )}
 
-        {event.whyRecommended && (
-          <div className="flex items-start gap-2 text-xs text-white/50" data-testid={`why-${event.id}`}>
-            <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
-            <span>{event.whyRecommended}</span>
-          </div>
+        {event.whyShort && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-start gap-2 text-xs text-white/50 cursor-default" data-testid={`why-${event.id}`}>
+                <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
+                <span>{event.whyShort}</span>
+                <Info className="h-3 w-3 shrink-0 mt-0.5 text-white/30" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-sm bg-zinc-900 text-zinc-100 border-zinc-700 p-3" data-testid={`tooltip-why-${event.id}`}>
+              <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                {event.whyLong}
+              </p>
+            </TooltipContent>
+          </Tooltip>
         )}
 
         <div className="flex items-center gap-2 pt-1">
@@ -357,6 +411,7 @@ function getCategoryStyle(category: string): string {
     case "campus": return "bg-blue-500/20 text-blue-300 border-blue-500/40";
     case "study": return "bg-amber-500/20 text-amber-300 border-amber-500/40";
     case "shows": return "bg-purple-500/20 text-purple-300 border-purple-500/40";
+    case "misc": return "bg-teal-500/20 text-teal-300 border-teal-500/40";
     default: return "bg-zinc-500/20 text-zinc-300 border-zinc-500/40";
   }
 }
@@ -368,6 +423,7 @@ function formatCategory(category: string): string {
     case "campus": return "Campus";
     case "study": return "Study";
     case "shows": return "Show";
+    case "misc": return "Misc";
     default: return category.charAt(0).toUpperCase() + category.slice(1);
   }
 }

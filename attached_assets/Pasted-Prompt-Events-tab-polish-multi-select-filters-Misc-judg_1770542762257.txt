@@ -1,0 +1,181 @@
+Prompt: Events tab polish (multi-select filters + Misc + judge hover AI explanations + smarter “why” line)
+
+Goal: Improve the existing Events tab only. Do NOT touch Clubs tab behavior (it’s perfect). Do NOT change the overall layout (keep TikTok scroller cards). Only refine Events UI + the data returned for Events so the AI/ML is obvious to judges and the copy is context-aware.
+
+A) Multi-select top filter chips (like Clubs)
+
+Currently Events top bar chips are single-select. Change to multi-select.
+
+Chips should allow multiple active at once (toggle on/off).
+
+Include these chips (keep current ones, but ensure all exist):
+
+For You
+
+Deals
+
+Campus
+
+Parties
+
+Study
+
+Shows
+
+Misc (NEW)
+
+Rules:
+
+If no chips selected, treat as For You default behavior.
+
+If multiple chips selected, show events matching any selected category (OR logic), then sort by ranking.
+
+Visually, selected chips should match the current selected styling used in Clubs.
+
+B) Add “Misc” category + placeholder events
+
+Add a new event category “misc” (or “Misc”) end-to-end:
+
+Update seed data to include at least 6 Misc events:
+
+Pumpkin patch / fall festival
+
+Farmers market
+
+Outdoor thrift pop-up
+
+Movie in the park
+
+Charity 5K
+
+Art walk / gallery night
+Make them realistic for a college town, include date/time, location, tags, and a decent description. Include at least 1 that’s urgent today.
+
+C) Ranking logic for Events (keep AI/ML visible)
+
+Events should be ranked by a hybrid score that uses the ML you built (local embeddings) plus social proof and urgency.
+
+Use this score (or extremely close):
+
+tasteScore (ML): embedding similarity userTasteEmbedding ↔ eventEmbedding (existing)
+
+socialScore: based on friend/mutual attendance signals
+
+e.g., count of “friends going” + “mutuals going” (or “compatible attendees going” if you don’t have explicit friend graph)
+
+urgencyScore: if event ends today / deadline today / within 24h / this week
+
+Final ranking suggestion:
+finalScore = 0.55*tasteScore + 0.25*socialScore + 0.20*urgencyScore
+
+Also:
+
+Deals chip should boost urgency weight (because deals expiring matter more).
+
+Study chip should boost persona academic alignment weight slightly (see section E).
+
+D) Hover explanation on the “% match” badge (judge-facing)
+
+When the user hovers over the match badge (e.g., “60% match”), show a small tooltip/popover explaining exactly what math/AI is happening.
+
+Tooltip content requirements (3–6 lines, human-readable, judge-friendly):
+
+“This score is computed using ML text embeddings (MiniLM) + vector similarity.”
+
+“We compare your Taste DNA embedding to the event embedding (cosine similarity).”
+
+“We then blend it with urgency + social proof (mutuals going).”
+
+If relevant: show the actual weights currently used (55/25/20).
+
+If fallback occurs: show scoringMethod + fallbackReason.
+
+Implementation details:
+
+Do NOT require clicking; hover should show tooltip.
+
+Keep it subtle (don’t redesign card).
+
+E) Smarter AI “why” line on each event card (context-aware)
+
+Right now the bottom AI line is generic (“Aligns with your vibe”). Fix it so it’s category-aware and feels intelligent.
+
+Rules:
+
+For Campus / Parties / Shows / Misc: vibes/traits language is okay.
+
+For Study: must reference academics/major/year or “focus/structure” traits.
+
+For Deals: must reference urgency + value + friend signal if present.
+
+Examples:
+
+Study group: “Recommended because you score high on Strategy + you listed CSCE/ECEN interest; 2 mutuals are going.”
+
+Deal: “Ending today — high value for your persona + 3 compatible students saved this.”
+
+Party: “High social-energy match + happening this week.”
+
+F) Hover explanation on the AI “why” line (deep dive)
+
+When hovering over the AI “why” line, open a tooltip with 3–4 lines explaining:
+
+Which quiz inputs mattered (major/year + 1–2 trait axes)
+
+Which behavior signals mattered (liked/saved similar events, attended similar category)
+
+Which social signals mattered (mutuals/friends/compatible attendees)
+
+Which time/urgency mattered (today/this week/deadline)
+
+Important: this must be truthful based on available data. If you don’t store some things explicitly, generate a best-effort explanation from what you DO store (traits + interactions + embeddings + RSVPs).
+
+G) Ensure API returns the fields needed (don’t break the existing response shape)
+
+Do NOT break existing fields. Only add.
+
+Events endpoints should include these additional fields per event:
+
+eventCategory (deals/campus/parties/study/shows/misc)
+
+tasteScore, socialScore, urgencyScore, finalScore
+
+matchScore (existing) remains
+
+scoringMethod, fallbackReason (existing)
+
+whyShort (the single-line “AI why” shown on card)
+
+whyLong (3–4 line hover tooltip text)
+
+matchMathTooltip (hover tooltip text for the % badge)
+
+mutualsGoingPreview (names/avatars if available) + mutualsGoingCount
+
+If some fields aren’t available, return empty/null and frontend hides gracefully.
+
+H) UI behavior constraints
+
+Do not change the vertical scroller layout.
+
+Do not add new pages.
+
+Only update Events tab chips behavior, tooltips, and text.
+
+Make sure it works both with demoAuth bypass and normal auth.
+
+I) After implementing
+
+Run:
+
+/api/demo/reset
+
+Open Events tab:
+
+Confirm multi-select works
+
+Confirm Misc shows
+
+Hover works on match badge and AI “why”
+
+Confirm study/deals copy changes are correct
