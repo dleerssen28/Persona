@@ -1,0 +1,43 @@
+Step 0 — One-time “project directive” prompt (sets the goal + guardrails)
+
+Paste this first to Replit:
+
+PROMPT 0 (Directive):
+We need to upgrade this project so it is undeniably AI/ML and top-tier for a 1000+ hackathon. Keep the same app idea and UI structure, but replace the deterministic hand-tuned trait engine as the primary intelligence. New primary engine must use embeddings + vector similarity + collaborative filtering, while keeping the 8 traits only as an explainability layer. We also need event enjoyment prediction and attendee matching, plus geolocation filtering with privacy. Implement this cleanly with our existing stack. Assume we can add necessary DB fields and indexes. Output your plan first, then implement. No vague descriptions—show exact schema changes, endpoints, and code edits.
+
+Step 1 — Make Replit identify current code touchpoints (so changes are targeted)
+
+PROMPT 1 (Codebase mapping):
+Before editing, scan the codebase and list the exact files and functions currently responsible for: (1) taste profile creation, (2) recommendation scoring, (3) social matching scoring, (4) event scoring, and (5) hobby scoring. For each, briefly state what it does today and what we will replace or augment. Provide a checklist of edits per file.
+
+Step 2 — Decide on embeddings approach + vector search (MERN-friendly)
+
+You want Mongo + Atlas Vector Search if you’re actually MERN; if you’re on Postgres, use pgvector. Either is fine. Pick one and commit.
+
+PROMPT 2 (Choose embedding + vector store):
+Pick the fastest, hackathon-reliable embedding pipeline and vector search approach for our stack. Options: (A) MongoDB Atlas Vector Search, (B) Pinecone, (C) Postgres pgvector. Choose ONE and justify briefly. Then implement the required schema/index changes and the minimal vector search wrapper functions. We need: store item embeddings, store user taste embeddings, and run KNN queries.
+
+Step 3 — Schema changes (this is where most teams screw up)
+
+You need fields for embeddings + geo.
+
+PROMPT 3 (Schema + migrations):
+Implement database schema changes for:
+
+items/events/hobbies: add embedding vector field
+
+users or taste_profiles: add tasteEmbedding vector field
+
+interactions: keep as-is
+
+events: add locationLat, locationLng OR geo point (depending on DB)
+
+users: add locationLat, locationLng + privacy radius
+Also add indexes needed for fast KNN and geo queries. Output the updated schema definitions and the migration instructions.
+
+Step 4 — Build embeddings ingestion (seed-time + on-demand)
+
+You must embed all seeded items/events/hobbies. Do it once at seed time and cache.
+
+PROMPT 4 (Embedding generation pipeline):
+Implement an embedding generator that creates embeddings for each item/event/hobby from title + tags + description. Use an embedding model API (OpenAI embeddings if available; if not, use a local sentence-transformer). Add code so seeding populates embeddings automatically and skips if already present. Provide a script or a seed step. Ensure embeddings are stored in the DB.
