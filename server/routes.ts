@@ -19,6 +19,51 @@ function demoAuth(req: any, res: any, next: any) {
   return isAuthenticated(req, res, next);
 }
 
+function computeUrgency(event: any): { urgencyScore: number; urgencyLabel: string; deadline: string | null } {
+  const now = new Date();
+  const deadlines: { date: Date; type: string }[] = [];
+
+  if (event.signupDeadline) deadlines.push({ date: new Date(event.signupDeadline), type: "signup" });
+  if (event.duesDeadline) deadlines.push({ date: new Date(event.duesDeadline), type: "dues" });
+  if (event.dateTime) deadlines.push({ date: new Date(event.dateTime), type: "event" });
+
+  if (deadlines.length === 0) return { urgencyScore: 0, urgencyLabel: "no deadline", deadline: null };
+
+  deadlines.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const nearest = deadlines.find(d => d.date.getTime() > now.getTime());
+  if (!nearest) return { urgencyScore: 0, urgencyLabel: "past", deadline: null };
+
+  const hoursUntil = (nearest.date.getTime() - now.getTime()) / (1000 * 60 * 60);
+  let urgencyScore: number;
+  let urgencyLabel: string;
+
+  if (hoursUntil <= 24) {
+    urgencyScore = 100;
+    urgencyLabel = "last chance";
+  } else if (hoursUntil <= 48) {
+    urgencyScore = 90;
+    urgencyLabel = "closing soon";
+  } else if (hoursUntil <= 72) {
+    urgencyScore = 75;
+    urgencyLabel = "this week";
+  } else if (hoursUntil <= 168) {
+    urgencyScore = 50;
+    urgencyLabel = "upcoming";
+  } else if (hoursUntil <= 336) {
+    urgencyScore = 30;
+    urgencyLabel = "next week";
+  } else {
+    urgencyScore = 10;
+    urgencyLabel = "plenty of time";
+  }
+
+  return {
+    urgencyScore,
+    urgencyLabel,
+    deadline: nearest.date.toISOString(),
+  };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -283,6 +328,8 @@ export async function registerRoutes(
           }
         }
 
+        const urgency = computeUrgency(event);
+
         return {
           ...event,
           matchScore,
@@ -291,6 +338,9 @@ export async function registerRoutes(
           explanation,
           scoringMethod,
           fallbackReason,
+          urgencyScore: urgency.urgencyScore,
+          urgencyLabel: urgency.urgencyLabel,
+          deadline: urgency.deadline,
           hasRsvpd: rsvpEventIds.has(event.id),
           rsvpCount: rsvps.length,
           attendees,
@@ -482,7 +532,7 @@ export async function registerRoutes(
           : null;
       }
 
-      const sampleDomain = "movies";
+      const sampleDomain = "academic";
       let scoringBreakdown = { embedding: 0, hybrid: 0, trait_fallback: 0 };
       let sampleRecommendations: any[] = [];
 
@@ -572,7 +622,7 @@ export async function registerRoutes(
 
   app.get("/api/debug/embedding-similarity-sanity", demoAuth, async (req: any, res) => {
     try {
-      const domains = ["movies", "music", "games", "food"];
+      const domains = ["academic", "professional", "social", "sports", "volunteering"];
       const domainResults: Record<string, any> = {};
 
       for (const domain of domains) {
@@ -688,20 +738,43 @@ export async function registerRoutes(
         const rsvpCount = rsvps.length;
         const hasRsvpd = rsvpEventIds.has(event.id);
 
+        const mutualsGoing: { id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null; matchPercent: number }[] = [];
+        const attendeePreview: { id: string; firstName: string | null; lastName: string | null; profileImageUrl: string | null }[] = [];
         let topMatches = 0;
-        if (hasEmbeddings && rsvpCount > 0) {
-          for (const rsvp of rsvps.slice(0, 5)) {
-            if (rsvp.userId === userId) continue;
+
+        for (const rsvp of rsvps.slice(0, 10)) {
+          if (rsvp.userId === userId) continue;
+          const otherUser = await storage.getUser(rsvp.userId);
+          if (!otherUser) continue;
+
+          const preview = { id: otherUser.id, firstName: otherUser.firstName, lastName: otherUser.lastName, profileImageUrl: otherUser.profileImageUrl };
+          if (attendeePreview.length < 3) attendeePreview.push(preview);
+
+          if (hasEmbeddings) {
             const otherProfile = await storage.getTasteProfile(rsvp.userId);
             if (otherProfile && isValidEmbedding(otherProfile.embedding)) {
               const sim = computeCosineSimilarity(profile.embedding!, otherProfile.embedding!);
-              if (cosineSimilarityToScore(sim) > 75) topMatches++;
+              const matchPct = cosineSimilarityToScore(sim);
+              if (matchPct > 65) {
+                mutualsGoing.push({ ...preview, matchPercent: matchPct });
+                topMatches++;
+              }
             }
           }
         }
+        mutualsGoing.sort((a, b) => b.matchPercent - a.matchPercent);
+
+        const whyParts: string[] = [];
+        if (tasteScore >= 75) whyParts.push("Strongly aligned with your interests");
+        else if (tasteScore >= 50) whyParts.push("Good fit for your profile");
+        if (mutualsGoing.length > 0) whyParts.push(`${mutualsGoing.length} compatible ${mutualsGoing.length === 1 ? "student" : "students"} going`);
+        if (event.clubName) whyParts.push(`Hosted by ${event.clubName}`);
+        const whyThisEvent = whyParts.length > 0 ? whyParts.join(" - ") : "Discover something new on campus";
 
         let nextAction = "RSVP";
         if (hasRsvpd) nextAction = topMatches > 0 ? `Message ${topMatches} top matches` : "You're going!";
+
+        const urgency = computeUrgency(event);
 
         return {
           id: event.id,
@@ -712,6 +785,11 @@ export async function registerRoutes(
           dateTime: event.dateTime,
           imageUrl: event.imageUrl,
           tags: event.tags,
+          clubName: event.clubName || null,
+          clubId: event.clubId || null,
+          cost: event.cost || null,
+          rsvpLimit: event.rsvpLimit || null,
+          locationDetails: event.locationDetails || null,
           eventScore,
           predictedEnjoymentPercent: predictedEnjoyment,
           tasteEmbeddingSimilarity: tasteScore,
@@ -719,6 +797,13 @@ export async function registerRoutes(
           timeRelevance,
           distanceKm,
           distanceBucket,
+          urgencyScore: urgency.urgencyScore,
+          urgencyLabel: urgency.urgencyLabel,
+          deadline: urgency.deadline,
+          mutualsGoing,
+          mutualsGoingCount: mutualsGoing.length,
+          attendeePreview,
+          whyThisEvent,
           nextAction,
           hasRsvpd,
           rsvpCount,
@@ -915,8 +1000,8 @@ export async function registerRoutes(
       }
 
       const colinItems = [
-        ...(itemsByDomain.get("games") || []).slice(0, 4),
-        ...(itemsByDomain.get("movies") || []).slice(0, 2),
+        ...(itemsByDomain.get("academic") || []).filter((i: any) => (i.tags || []).some((t: string) => ["career_alignment", "software", "cybersecurity"].includes(t))).slice(0, 3),
+        ...(itemsByDomain.get("sports") || []).slice(0, 3),
       ];
       for (const item of colinItems) {
         await storage.createInteraction({
@@ -929,8 +1014,8 @@ export async function registerRoutes(
       }
 
       const andyItems = [
-        ...(itemsByDomain.get("music") || []).slice(0, 3),
-        ...(itemsByDomain.get("food") || []).slice(0, 3),
+        ...(itemsByDomain.get("professional") || []).filter((i: any) => (i.tags || []).some((t: string) => ["startups", "design", "product"].includes(t))).slice(0, 3),
+        ...(itemsByDomain.get("social") || []).slice(0, 3),
       ];
       for (const item of andyItems) {
         await storage.createInteraction({
@@ -943,8 +1028,8 @@ export async function registerRoutes(
       }
 
       const devonItems = [
-        ...(itemsByDomain.get("movies") || []).filter((i: any) => (i.tags || []).some((t: string) => ["cozy", "emotional", "classic", "animated"].includes(t))).slice(0, 3),
-        ...(itemsByDomain.get("food") || []).filter((i: any) => (i.tags || []).some((t: string) => ["comfort", "social", "brunch"].includes(t))).slice(0, 3),
+        ...(itemsByDomain.get("volunteering") || []).filter((i: any) => (i.tags || []).some((t: string) => ["community", "campus_tradition", "children"].includes(t))).slice(0, 3),
+        ...(itemsByDomain.get("social") || []).filter((i: any) => (i.tags || []).some((t: string) => ["culture", "community", "social"].includes(t))).slice(0, 3),
       ];
       for (const item of devonItems) {
         await storage.createInteraction({
@@ -976,9 +1061,10 @@ export async function registerRoutes(
         existingProfile = await storage.upsertTasteProfile({ userId, ...GARV_PROFILE });
       }
       const demoItems = [
-        ...(itemsByDomain.get("movies") || []).slice(0, 4),
-        ...(itemsByDomain.get("music") || []).slice(0, 3),
-        ...(itemsByDomain.get("games") || []).slice(0, 2),
+        ...(itemsByDomain.get("academic") || []).slice(0, 3),
+        ...(itemsByDomain.get("professional") || []).slice(0, 3),
+        ...(itemsByDomain.get("sports") || []).slice(0, 2),
+        ...(itemsByDomain.get("volunteering") || []).slice(0, 1),
       ];
       for (const item of demoItems) {
         await storage.createInteraction({
@@ -1029,53 +1115,53 @@ export async function registerRoutes(
   app.get("/api/demo/story", demoAuth, async (_req: any, res) => {
     try {
       res.json({
-        title: "Persona: 60-Second Demo Script",
+        title: "Persona: Campus Clubs Discovery - 60-Second Demo",
         steps: [
           {
             step: 1,
             action: "Show AI is real",
             endpoint: "GET /api/debug/ai-status",
-            say: "Our system runs a local transformer model (all-MiniLM-L6-v2, 384-dim) generating real neural embeddings. Zero external APIs. 100% coverage across all content.",
+            say: "Our system runs a local transformer model (all-MiniLM-L6-v2, 384-dim) generating real neural embeddings for 50 TAMU campus clubs across 5 domains. Zero external APIs. 100% coverage.",
             expectedResult: "aiReady: true, embeddingDim: 384, avgVectorNorm ~1.0",
           },
           {
             step: 2,
-            action: "Get personalized recommendations",
-            endpoint: "GET /api/recommendations/movies",
-            say: "Every recommendation is ranked by hybrid ML: 55% vector similarity from neural embeddings, 25% collaborative filtering from taste neighbors, 20% trait explainability. Watch the vectorScore and scoringMethod fields.",
-            expectedResult: "Items with scoringMethod='embedding', vectorScore values, and human-readable explanations",
+            action: "Get personalized club recommendations",
+            endpoint: "GET /api/recommendations/academic",
+            say: "Every club recommendation is ranked by hybrid ML: 55% vector similarity from neural embeddings, 25% collaborative filtering from taste neighbors, 20% trait explainability. Watch the vectorScore and scoringMethod fields.",
+            expectedResult: "Clubs with scoringMethod='embedding', vectorScore values, and campus-specific explanations",
           },
           {
             step: 3,
             action: "Show cold-start proof",
             endpoint: "GET /api/debug/match-proof/seed-devon",
-            say: "Here's the magic: Devon and I have less than 10% item overlap, but our embedding match is over 85%. The model learned our latent taste patterns even without shared history. Cold start solved.",
-            expectedResult: "embeddingMatchPercent > 85, explicitOverlapPercent < 10",
+            say: "Devon and I have different club preferences, but our embedding match is high. The model learned our latent interest patterns even without shared club history. Cold start solved for new students.",
+            expectedResult: "embeddingMatchPercent > 70, explicitOverlapPercent < 20",
           },
           {
             step: 4,
             action: "Show event compatibility engine",
-            endpoint: "GET /api/events/for-you?lat=37.4275&lng=-122.1697",
-            say: "Events are scored with a 3-factor formula: 55% taste embedding similarity, 25% proximity (Haversine distance), 20% time relevance. This is a real-world compatibility predictor, not just a list.",
-            expectedResult: "Events with eventScore, predictedEnjoymentPercent, distanceKm, scoringFormula",
+            endpoint: "GET /api/events/for-you?lat=30.6187&lng=-96.3365",
+            say: "Club events scored with a 3-factor formula: 55% taste embedding similarity, 25% campus proximity (Haversine distance), 20% time relevance. Urgency scoring highlights approaching deadlines.",
+            expectedResult: "Events with eventScore, urgencyScore, urgencyLabel, predictedEnjoymentPercent, distanceKm",
           },
           {
             step: 5,
             action: "Show attendee matching at events",
             endpoint: "GET /api/events/{topEventId}/attendee-matches",
-            say: "For any event, we compute embedding similarity between you and every attendee. You see match percentages, the top traits driving compatibility, and a 'why we match' explanation. This is social computing meets ML.",
-            expectedResult: "Attendees with matchPercent, topTraitsWhy, whyWeMatch",
+            say: "For any club event, we compute embedding similarity between you and every attendee. You see who's going, mutual friends, and why you match. Social computing meets ML for campus networking.",
+            expectedResult: "Attendees with matchPercent, mutualsGoing, attendeePreview, whyWeMatch",
           },
           {
             step: 6,
-            action: "Show embedding sanity",
+            action: "Show embedding sanity across campus domains",
             endpoint: "GET /api/debug/embedding-similarity-sanity",
-            say: "Finally, here's proof the embeddings are semantically meaningful. Intra-domain similarity ranges show the model distinguishes between items while recognizing genre relatedness. Not random, not uniform - real semantic structure.",
+            say: "Proof the embeddings are semantically meaningful across academic, professional, social, sports, and volunteering domains. Real semantic structure, not random vectors.",
             expectedResult: "Per-domain min/mean/max cosine similarities showing semantic clustering",
           },
         ],
         resetEndpoint: "POST /api/demo/reset",
-        resetNote: "Run this first to guarantee a clean demo state with seeded interactions and embeddings.",
+        resetNote: "Run this first to guarantee a clean demo state with seeded interactions and embeddings for all 50 campus clubs.",
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to generate demo story" });

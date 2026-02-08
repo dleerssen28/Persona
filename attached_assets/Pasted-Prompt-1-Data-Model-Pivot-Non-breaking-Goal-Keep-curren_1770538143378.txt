@@ -1,0 +1,134 @@
+Prompt 1 — Data Model Pivot (Non-breaking)
+
+Goal: Keep current tables/routes working, but add club-specific fields and seed club data in the existing items and events tables.
+
+Send to Replit:
+We are pivoting from movies/music/games/food/hobbies to a campus product: Clubs + Club events + deadlines + mutuals going. Do this WITHOUT breaking frontend or API routes. Keep existing tables and endpoints, but change seeded content + fields.
+
+Backend changes:
+
+Keep using items table for “clubs” (domain stays but will map to club categories).
+
+Update seeding so items.domain uses: academic, professional, social, sports, volunteering (5 domains).
+
+Each item is now a club with:
+
+title = club name
+
+description = club synopsis (2–3 lines)
+
+tags = [career_alignment, vibe, commitment, skills, industry]
+
+imageUrl = existing frontend image string format (use current image identifiers)
+
+Keep using events table for:
+
+category="custom": student-created club hangouts / watch parties / meetings
+
+category="organized": official club meetings / recruiting nights / info sessions (also campus-wide deals if needed)
+Add non-breaking new columns to events (nullable):
+
+clubId (references items.id) OR clubName (text) if you want simple
+
+signupDeadline timestamp nullable
+
+duesDeadline timestamp nullable
+
+cost text nullable (e.g. “$20 dues”, “free”)
+
+rsvpLimit integer nullable
+
+locationDetails text nullable (e.g. “MSC Room 2400”)
+
+Keep embeddings working:
+
+Use existing embedding generation for items/events: embed title + description + tags + major/year targeting text + commitment text.
+
+Update seed.ts:
+
+Replace movie/music/game/food items with ~40–60 TAMU-like clubs across the domains above (engineering orgs, consulting clubs, cultural orgs, service orgs, sports, etc.)
+
+Replace events with club recruiting events + first meetings + dues deadlines + “tonight” events.
+
+Ensure at least 8–12 events are within the next 14 days.
+
+After seeding, ensure POST /api/demo/reset still produces a deterministic demo state.
+
+Do NOT change any frontend code yet. Ensure existing recommendation/event endpoints still return expected fields.
+
+Prompt 2 — Clubs “For You” (Same endpoint, new meaning)
+
+Goal: /api/recommendations/:domain becomes “clubs recommended” but the route stays.
+
+Send to Replit:
+Update the recommendation meaning without breaking frontend:
+
+GET /api/recommendations/:domain should now return club recommendations (from items table) for the given domain (academic/professional/social/sports/volunteering).
+
+Keep response shape EXACTLY as current frontend expects (including matchScore, explanation, scoringMethod, vectorScore, cfScore if present).
+
+Update the explanation generator to be club-specific:
+
+“Matches your career direction (systems/cyber/AI)”
+
+“Fits your social energy + commitment style”
+
+“Aligns with your hands-on / competitive / collaborative preferences”
+
+Collaborative filtering should now be: “students like you saved/joined this club”
+
+Use interactions on items in these domains.
+
+No UI changes. Just make the same endpoint feed club cards.
+
+Prompt 3 — Add Urgency Scoring without breaking UI
+
+Goal: Keep the UI the same, but allow the backend to return urgency fields so the frontend can later display them.
+
+Send to Replit:
+Add urgency/deadline intelligence to clubs and events without breaking anything:
+
+Add a server-side urgencyScore for:
+
+clubs: based on nearest related event’s signupDeadline/duesDeadline/firstMeeting
+
+events: based on time until event + deadline proximity
+
+Include in API responses (non-breaking new fields):
+
+For recommended clubs (/api/recommendations/:domain):
+
+nextMeetingAt, signupDeadline, duesDeadline, urgencyScore (0–100), urgencyLabel (“Due soon”, “This week”, “No deadline”)
+
+For events (/api/events and /api/events/for-you):
+
+urgencyScore, timeToStartHours, deadlineInHours
+
+Do not remove any existing fields. Frontend can ignore these for now.
+
+Prompt 4 — Mutual friends going (core feature)
+
+Goal: Events page becomes powerful: show mutuals going, not just attendee count.
+
+Send to Replit:
+Implement mutual friends going + “you should meet” logic, using existing RSVP data and social graph:
+
+For GET /api/events and GET /api/events/for-you, include:
+
+attendeePreview: up to 8 attendees (name, avatar)
+
+mutualsGoing: attendees who are in the requester’s top friend matches OR have matchScore >= 75 with requester
+
+mutualsGoingCount
+
+Add field whyThisEvent (string) that picks 1–2 reasons:
+
+“3 of your high-match people are going”
+
+“Strong match + starts soon”
+
+“Fits your career alignment”
+
+Ensure this works in demo/reset with seeded users RSVPed to realistic events (not all events).
+
+No frontend changes.

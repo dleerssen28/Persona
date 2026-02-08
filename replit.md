@@ -1,7 +1,7 @@
 # Persona
 
 ## Overview
-Persona is a taste intelligence platform that builds a "Taste DNA" for every user across movies, music, games, food, and hobbies. It uses this understanding to match users with compatible people, recommend content, and discover new hobbies - all with explainable "why" reasoning.
+Persona is an AI-powered campus clubs discovery platform for TAMU that builds a "Taste DNA" for every student across 5 domains: academic, professional, social, sports, and volunteering. It uses local transformer embeddings (all-MiniLM-L6-v2, 384-dim) to match students to clubs, recommend clubs, and discover club events - all with explainable "why" reasoning.
 
 ## Tech Stack
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
@@ -19,9 +19,16 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 
 ### Pages
 - `/` - Landing page (unauthenticated) / Profile page (authenticated)
-- `/recommendations` - Content recommendations across 5 domains
+- `/recommendations` - Club recommendations across 5 campus domains
 - `/events` - Event discovery with geolocation-aware scoring
 - `/social` - Social matching with compatibility scores
+
+### Domains (Campus)
+- `academic` - Academic clubs (IEEE, Coding Club, AI/ML, Research, etc.)
+- `professional` - Professional development (Consulting, Entrepreneurship, Finance, etc.)
+- `social` - Social/cultural clubs (Film, Gaming, Korean SA, Dance, etc.)
+- `sports` - Club sports (Soccer, Climbing, Basketball, Pickleball, etc.)
+- `volunteering` - Service organizations (Habitat, Big Event, Camp Kesem, etc.)
 
 ### Profile Page (redesigned)
 - Full-screen themed background (Oceanic, Aurora, Ember, or custom image)
@@ -32,7 +39,7 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
   - Edit Layout toggle (section reordering)
 - Glassy see-through sections with backdrop-blur-xl:
   - Top 3 Traits: highest scoring personality traits
-  - myDNA Top 3: top movie/music/game matches
+  - myDNA Top 3: top club matches
   - Taste DNA Radar: full radar chart + bar breakdown
   - Gallery (Hobby Tags): combined hobby images + vertical reel cards with tags
 - Theme images stored in `client/src/assets/images/theme-*.png`
@@ -41,12 +48,18 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - `GET /api/auth/user` - Current authenticated user
 - `GET /api/taste-profile` - User's taste profile
 - `POST /api/onboarding` - Complete onboarding with favorites + trait quiz
-- `GET /api/recommendations/:domain` - Get recommendations for a domain
+- `GET /api/recommendations/:domain` - Get club recommendations for a domain (academic/professional/social/sports/volunteering)
 - `POST /api/interactions` - Record user interaction (like/love/skip/save)
 - `GET /api/social/matches` - Get matched users with scores
 - `GET /api/explore/hobbies` - Get hobby recommendations
+- `GET /api/events/for-you` - Personalized events with urgency scoring + mutualsGoing
 - `POST /api/demo/bootstrap` - Auto-create demo profile for authenticated user
+- `POST /api/demo/reset` - Reset demo state (dev-only auth bypass)
+- `GET /api/demo/story` - Demo script with talking points
+- `GET /api/debug/ai-status` - AI readiness check
 - `GET /api/debug/embedding-health` - Dashboard: embedding coverage, scoring mode status
+- `GET /api/debug/embedding-similarity-sanity` - Per-domain cosine similarity proof
+- `GET /api/debug/match-proof/:userId` - Cold-start matching proof
 - `POST /api/admin/backfill-embeddings` - Generate missing embeddings + recompute user profiles
 
 ### Hybrid AI/ML Engine (Embeddings-First)
@@ -56,16 +69,26 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - **Trait Explainability (20%)**: 8-axis trait algebra for human-readable "why" explanations only
 - **Scoring Methods**: `embedding` (vector-only), `hybrid` (vector+CF+traits), `trait_fallback` (no embeddings)
 - **fallbackReason**: `missing_user_embedding`, `missing_item_embedding`, `missing_both_embeddings`, `invalid_embedding_dim`
-- Geolocation-aware event scoring with Haversine distance + privacy radius
+- Geolocation-aware event scoring with Haversine distance + privacy radius (TAMU coords: 30.6187, -96.3365)
 - User taste embeddings recomputed synchronously on every interaction and onboarding (deterministic, not fire-and-forget)
 - Startup warning logged if any items/events/hobbies missing embeddings
+
+### Urgency Scoring
+- Events include urgencyScore (0-100), urgencyLabel, and deadline fields
+- Computed from signupDeadline, duesDeadline, and dateTime
+- Labels: "last chance" (24h), "closing soon" (48h), "this week" (72h), "upcoming" (7d), "next week" (14d), "plenty of time"
+
+### Mutual Friends / Social Context
+- Events include mutualsGoing (compatible students attending), mutualsGoingCount, attendeePreview (first 3 attendees), whyThisEvent
+- "Mutuals" are defined as attendees with >65% embedding match to the current user
+- whyThisEvent combines taste alignment + mutuals count + club name
 
 ### Taste Engine (Explainability Layer)
 - Trait-based similarity scoring across 8 axes: novelty, intensity, cozy, strategy, social, creativity, nostalgia, adventure
 - Tag-to-trait mapping for building user profiles from preferences
 - Distance-based RMS scoring for realistic match distribution (green 75+, yellow 50-74, red <50)
 - Explainable matching with "why you match" insights
-- Cluster generation (Creative Thinker, Adventurer, etc.)
+- Cluster generation (Engineering Leader, Creative Builder, Service Leader, etc.)
 
 ### Key Components
 - `RadarChart` - SVG radar visualization of taste traits
@@ -84,11 +107,11 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - `users` - Auth users (managed by Replit Auth) + locationLat/locationLng/privacyRadiusKm
 - `sessions` - Session storage (managed by Replit Auth)
 - `taste_profiles` - User taste DNA with 8 trait axes + clusters + embedding vector(384)
-- `items` - Content items across 5 domains with trait values + embedding vector(384)
+- `items` - Campus clubs across 5 domains with trait values + embedding vector(384)
 - `interactions` - User interactions with items (like/love/skip/save)
 - `matches` - Cached match computations
-- `hobbies` - Hobby entries with trait values + embedding vector(384)
-- `events` - Events with trait values + embedding vector(384) + locationLat/locationLng
+- `hobbies` - Campus hobby entries with trait values + embedding vector(384)
+- `events` - Club events with trait values + embedding vector(384) + locationLat/locationLng + clubId/clubName/signupDeadline/duesDeadline/cost/rsvpLimit/locationDetails
 - `event_rsvps` - RSVP records linking users to events
 
 ### Key Backend Files
@@ -96,8 +119,15 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - `server/collaborative-filtering.ts` - Embedding-based neighbor CF with weighted action aggregation
 - `server/embeddings.ts` - Local @xenova/transformers embeddings (all-MiniLM-L6-v2, 384-dim), recomputeTasteEmbedding (synchronous), checkEmbeddingHealth
 - `server/taste-engine.ts` - 8-axis trait algebra (explainability layer only)
-- `server/seed.ts` - Database seeding with embedding pipeline + startup health warning
-- `server/routes.ts` - Express API routes including debug/health and admin/backfill endpoints
+- `server/seed.ts` - 50 TAMU campus clubs + 16 events + 16 hobbies with embedding pipeline
+- `server/routes.ts` - Express API routes including debug/health, demo/reset, and admin/backfill endpoints
+
+### Seed Data
+- 50 campus clubs: 10 per domain (academic, professional, social, sports, volunteering)
+- 16 club events within 14-day rolling window using daysFromNow helper
+- 16 campus-specific hobbies (intramural sports, hackathon building, tailgating, etc.)
+- 3 seed users: Colin (Engineering Leader), Andy (Creative Builder), Devon (Service Leader)
+- Demo user profile: Tech Innovator / Hackathon Builder / Research Explorer
 
 ## User Preferences
 - Dark mode by default

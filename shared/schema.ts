@@ -129,6 +129,13 @@ export const events = pgTable("events", {
   embeddingUpdatedAt: timestamp("embedding_updated_at"),
   locationLat: doublePrecision("location_lat"),
   locationLng: doublePrecision("location_lng"),
+  clubId: varchar("club_id"),
+  clubName: text("club_name"),
+  signupDeadline: timestamp("signup_deadline"),
+  duesDeadline: timestamp("dues_deadline"),
+  cost: text("cost"),
+  rsvpLimit: integer("rsvp_limit"),
+  locationDetails: text("location_details"),
 }, (table) => [
   index("events_category_idx").on(table.category),
 ]);
@@ -164,7 +171,7 @@ export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type EventRsvp = typeof eventRsvps.$inferSelect;
 export type InsertEventRsvp = z.infer<typeof insertEventRsvpSchema>;
 
-export const DOMAINS = ["movies", "music", "games", "food", "hobbies"] as const;
+export const DOMAINS = ["academic", "professional", "social", "sports", "volunteering"] as const;
 export type Domain = typeof DOMAINS[number];
 
 export const TRAIT_AXES = [

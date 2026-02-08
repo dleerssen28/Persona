@@ -191,9 +191,9 @@ export async function hybridRecommend(
       }
 
       const explanationParts: string[] = [];
-      if (vs >= 75) explanationParts.push("Strong semantic match to your taste profile");
-      else if (vs >= 50) explanationParts.push("Good alignment with your preferences");
-      if (cfScores.has(item.id)) explanationParts.push("Liked by people with similar taste");
+      if (vs >= 75) explanationParts.push("Strong match to your campus interests");
+      else if (vs >= 50) explanationParts.push("Good alignment with your club preferences");
+      if (cfScores.has(item.id)) explanationParts.push("Popular with students who share your interests");
       explanationParts.push(traitResult.explanation);
 
       return {
@@ -247,9 +247,9 @@ export function hybridSocialMatch(
 
     const explanations = [...traitResult.explanations];
     if (vectorScore >= 75) {
-      explanations.unshift("Deep taste alignment detected by AI analysis");
+      explanations.unshift("Strong interest alignment detected by AI analysis");
     } else if (vectorScore >= 50) {
-      explanations.unshift("Meaningful overlap in taste preferences");
+      explanations.unshift("Meaningful overlap in campus interests");
     }
 
     return {
@@ -321,10 +321,10 @@ export function hybridEventScore(
     );
 
     const explanationParts: string[] = [];
-    if (vectorScore >= 75) explanationParts.push("AI predicts high enjoyment based on your taste DNA");
-    else if (vectorScore >= 50) explanationParts.push("Good match with your preferences");
+    if (vectorScore >= 75) explanationParts.push("AI predicts high interest based on your campus profile");
+    else if (vectorScore >= 50) explanationParts.push("Good match with your club interests");
     else explanationParts.push(traitResult.explanation);
-    if (distanceBucket && geoBonus >= 70) explanationParts.push(`Conveniently located ${distanceBucket} away`);
+    if (distanceBucket && geoBonus >= 70) explanationParts.push(`Conveniently located ${distanceBucket} away on campus`);
 
     return {
       event,
