@@ -12,25 +12,26 @@ import {
   Bookmark, SkipForward, ThumbsUp, Sparkles
 } from "lucide-react";
 import { useState } from "react";
+import { getItemImage } from "@/lib/item-images";
+import { getHobbyImage } from "@/lib/hobby-images";
 
 import domainMovies from "@/assets/images/domain-movies.jpg";
 import domainMusic from "@/assets/images/domain-music.jpg";
 import domainGames from "@/assets/images/domain-games.jpg";
 import domainFood from "@/assets/images/domain-food.jpg";
 import domainHobbies from "@/assets/images/domain-hobbies.jpg";
-import { getHobbyImage } from "@/lib/hobby-images";
 
 type ContentDomain = "movies" | "music" | "games" | "food" | "hobbies";
 
-const DOMAINS: { key: ContentDomain; label: string; icon: typeof Film; image: string }[] = [
-  { key: "movies", label: "Movies", icon: Film, image: domainMovies },
-  { key: "music", label: "Music", icon: Music, image: domainMusic },
-  { key: "games", label: "Games", icon: Gamepad2, image: domainGames },
-  { key: "food", label: "Food", icon: UtensilsCrossed, image: domainFood },
-  { key: "hobbies", label: "Hobbies", icon: Compass, image: domainHobbies },
+const DOMAINS: { key: ContentDomain; label: string; icon: typeof Film }[] = [
+  { key: "movies", label: "Movies", icon: Film },
+  { key: "music", label: "Music", icon: Music },
+  { key: "games", label: "Games", icon: Gamepad2 },
+  { key: "food", label: "Food", icon: UtensilsCrossed },
+  { key: "hobbies", label: "Hobbies", icon: Compass },
 ];
 
-const DOMAIN_IMAGES: Record<string, string> = {
+const DOMAIN_FALLBACK: Record<string, string> = {
   movies: domainMovies,
   music: domainMusic,
   games: domainGames,
@@ -78,8 +79,8 @@ export default function RecommendationsPage() {
   const [activeDomain, setActiveDomain] = useState<ContentDomain>("movies");
 
   return (
-    <div className="space-y-5 pb-4">
-      <div className="px-4 sm:px-6 pt-4">
+    <div className="pb-4">
+      <div className="px-4 sm:px-6 pt-4 pb-3">
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-recommendations-title">
           For You
         </h1>
@@ -88,7 +89,7 @@ export default function RecommendationsPage() {
         </p>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto px-4 sm:px-6 pb-1 no-scrollbar">
+      <div className="flex gap-2 overflow-x-auto px-4 sm:px-6 pb-4 no-scrollbar sticky top-14 z-30 bg-background/95 backdrop-blur-sm pt-1">
         {DOMAINS.map((domain) => {
           const Icon = domain.icon;
           const isActive = activeDomain === domain.key;
@@ -145,9 +146,9 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
 
   if (isLoading) {
     return (
-      <div className="flex gap-4 overflow-x-auto px-4 sm:px-6 pb-4">
-        {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-72 w-64 shrink-0 rounded-md" />
+      <div className="space-y-4 px-4 sm:px-6">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-56 w-full rounded-md" />
         ))}
       </div>
     );
@@ -167,40 +168,44 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto px-4 sm:px-6 pb-4 no-scrollbar snap-x snap-mandatory">
+    <div className="space-y-4 px-4 sm:px-6">
       {items.map((item) => {
         const color = getScoreColor(item.matchScore);
+        const itemImage = getItemImage(item.title);
+        const fallback = DOMAIN_FALLBACK[domain];
         return (
           <div
             key={item.id}
-            className="relative shrink-0 w-72 h-[340px] rounded-md overflow-hidden snap-start group"
+            className="relative w-full h-56 sm:h-64 rounded-md overflow-hidden"
             data-testid={`card-item-${item.id}`}
           >
             <img
-              src={DOMAIN_IMAGES[domain]}
+              src={itemImage || fallback}
               alt={item.title}
               className="absolute inset-0 w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10" />
 
-            <div className="relative h-full flex flex-col justify-end p-4 space-y-2.5">
-              <div className="flex items-start justify-between gap-2">
+            <div className="relative h-full flex flex-col justify-end p-4 gap-2">
+              <div className="flex items-center justify-between gap-3">
                 <h3
-                  className="font-bold text-white text-lg leading-tight drop-shadow-sm"
+                  className="font-bold text-white text-xl leading-tight drop-shadow-sm truncate"
                   data-testid={`text-item-title-${item.id}`}
                 >
                   {item.title}
                 </h3>
-                <MatchPill score={item.matchScore} size="sm" showLabel={false} />
+                <div className="shrink-0">
+                  <MatchPill score={item.matchScore} size="sm" showLabel={false} />
+                </div>
               </div>
 
               {item.tags && (
-                <div className="flex flex-wrap gap-1">
-                  {item.tags.slice(0, 3).map((tag) => (
+                <div className="flex flex-wrap gap-1.5">
+                  {item.tags.slice(0, 4).map((tag) => (
                     <span
                       key={tag}
                       className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded border font-medium",
+                        "text-[11px] px-2 py-0.5 rounded border font-medium",
                         getTagColor(tag)
                       )}
                     >
@@ -210,20 +215,14 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
                 </div>
               )}
 
-              {item.description && (
-                <p className="text-xs text-white/70 leading-relaxed line-clamp-2">
-                  {item.description}
-                </p>
-              )}
-
               <div className="flex items-start gap-1.5 text-xs">
                 <Sparkles className={cn("h-3 w-3 mt-0.5 shrink-0",
                   color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
                 )} />
-                <span className="text-white/60">{item.explanation}</span>
+                <span className="text-white/70 line-clamp-1">{item.explanation}</span>
               </div>
 
-              <div className="flex items-center gap-1 pt-1">
+              <div className="flex items-center gap-1">
                 <Button
                   size="icon"
                   variant="ghost"
@@ -270,9 +269,9 @@ function HobbiesSection() {
 
   if (isLoading) {
     return (
-      <div className="flex gap-4 overflow-x-auto px-4 sm:px-6 pb-4">
-        {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-72 w-64 shrink-0 rounded-md" />
+      <div className="space-y-4 px-4 sm:px-6">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-56 w-full rounded-md" />
         ))}
       </div>
     );
@@ -292,38 +291,40 @@ function HobbiesSection() {
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto px-4 sm:px-6 pb-4 no-scrollbar snap-x snap-mandatory">
+    <div className="space-y-4 px-4 sm:px-6">
       {hobbies.map((hobby) => {
         const color = getScoreColor(hobby.matchScore);
         const image = getHobbyImage(hobby.title);
         return (
           <div
             key={hobby.id}
-            className="relative shrink-0 w-72 h-[340px] rounded-md overflow-hidden snap-start"
+            className="relative w-full h-56 sm:h-64 rounded-md overflow-hidden"
             data-testid={`card-hobby-${hobby.id}`}
           >
             <img
-              src={image || DOMAIN_IMAGES.hobbies}
+              src={image || DOMAIN_FALLBACK.hobbies}
               alt={hobby.title}
               className="absolute inset-0 w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10" />
 
-            <div className="relative h-full flex flex-col justify-end p-4 space-y-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-bold text-white text-lg leading-tight drop-shadow-sm">
+            <div className="relative h-full flex flex-col justify-end p-4 gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-bold text-white text-xl leading-tight drop-shadow-sm truncate">
                   {hobby.title}
                 </h3>
-                <MatchPill score={hobby.matchScore} size="sm" showLabel={false} />
+                <div className="shrink-0">
+                  <MatchPill score={hobby.matchScore} size="sm" showLabel={false} />
+                </div>
               </div>
 
               {hobby.tags && (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {hobby.tags.slice(0, 4).map((tag) => (
                     <span
                       key={tag}
                       className={cn(
-                        "text-[10px] px-1.5 py-0.5 rounded border font-medium",
+                        "text-[11px] px-2 py-0.5 rounded border font-medium",
                         getTagColor(tag)
                       )}
                     >
@@ -343,7 +344,7 @@ function HobbiesSection() {
                 <Sparkles className={cn("h-3 w-3 mt-0.5 shrink-0",
                   color === "green" ? "text-emerald-400" : color === "yellow" ? "text-amber-400" : "text-zinc-400"
                 )} />
-                <span className="text-white/60">{hobby.whyItFits}</span>
+                <span className="text-white/70 line-clamp-1">{hobby.whyItFits}</span>
               </div>
             </div>
           </div>
