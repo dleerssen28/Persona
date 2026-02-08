@@ -368,8 +368,8 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="relative min-h-screen">
-      <div className="fixed inset-0 -z-10">
+    <>
+      <div className="fixed inset-0 z-0" style={{ pointerEvents: "none" }}>
         <img
           src={themeImage}
           alt="Theme background"
@@ -379,25 +379,26 @@ export default function ProfilePage() {
         <div className="absolute inset-0 bg-black/20" />
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleCustomImage}
-        data-testid="input-custom-theme"
-      />
+      <div className="relative min-h-screen z-[1]" style={{ background: "transparent" }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleCustomImage}
+          data-testid="input-custom-theme"
+        />
 
-      <div className="relative max-w-3xl mx-auto">
-        <div className="relative h-48 sm:h-56 overflow-hidden rounded-b-lg">
-          <img
-            src={coverImage}
-            alt="Profile cover"
-            className="w-full h-full object-cover"
-            data-testid="img-profile-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-        </div>
+        <div className="relative max-w-3xl mx-auto">
+          <div className="relative h-48 sm:h-56 overflow-hidden rounded-b-lg">
+            <img
+              src={coverImage}
+              alt="Profile cover"
+              className="w-full h-full object-cover"
+              data-testid="img-profile-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+          </div>
 
         <div className="absolute top-3 right-3 z-20">
           <Button
@@ -572,5 +573,6 @@ export default function ProfilePage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

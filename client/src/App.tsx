@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -31,6 +31,8 @@ function Router() {
 }
 
 function AuthenticatedApp() {
+  const [location] = useLocation();
+  const isProfilePage = location === "/";
   const { data: profile, isLoading: profileLoading } = useQuery<TasteProfile | null>({
     queryKey: ["/api/taste-profile"],
   });
@@ -67,17 +69,17 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="flex items-center justify-between gap-4 px-4 py-2 border-b border-border/50 h-14 shrink-0 sticky top-0 z-40 bg-background/80 backdrop-blur-xl">
+    <div className={`min-h-screen flex flex-col ${isProfilePage ? "" : "bg-background"}`}>
+      <header className={`flex items-center justify-between gap-4 px-4 py-2 border-b border-border/50 h-14 shrink-0 sticky top-0 z-40 ${isProfilePage ? "bg-black/30 backdrop-blur-xl border-white/10" : "bg-background/80 backdrop-blur-xl"}`}>
         <div className="flex items-center gap-2">
           <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center">
             <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <span className="font-semibold text-base tracking-tight">Persona</span>
+          <span className={`font-semibold text-base tracking-tight ${isProfilePage ? "text-white" : ""}`}>Persona</span>
         </div>
         <ThemeToggle />
       </header>
-      <main className="flex-1 overflow-y-auto pb-20">
+      <main className="flex-1 pb-20">
         <Router />
       </main>
       <BottomNav />
