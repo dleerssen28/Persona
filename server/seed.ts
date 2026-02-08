@@ -406,4 +406,16 @@ export async function seedDatabase() {
   } catch (error) {
     console.error("Error generating embeddings (non-fatal):", error);
   }
+
+  const missingItems = await pool.query("SELECT COUNT(*) as count FROM items WHERE embedding IS NULL");
+  const missingEvents = await pool.query("SELECT COUNT(*) as count FROM events WHERE embedding IS NULL");
+  const missingHobbies = await pool.query("SELECT COUNT(*) as count FROM hobbies WHERE embedding IS NULL");
+  const mi = parseInt(missingItems.rows[0].count);
+  const me = parseInt(missingEvents.rows[0].count);
+  const mh = parseInt(missingHobbies.rows[0].count);
+  if (mi > 0 || me > 0 || mh > 0) {
+    console.warn(`[EMBEDDING WARNING] Missing embeddings: ${mi} items, ${me} events, ${mh} hobbies. Scoring will use trait_fallback mode. Run POST /api/admin/backfill-embeddings to fix.`);
+  } else {
+    console.log("[EMBEDDING OK] All items, events, and hobbies have embeddings. ML-first scoring active.");
+  }
 }

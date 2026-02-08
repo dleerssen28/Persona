@@ -1,0 +1,113 @@
+PROMPT 5A — Embedding Health + Demo Reliability Gate (must-have)
+
+Goal: Prove ML is actually running and stop relying on “graceful fallback” as your story.
+
+Paste to Replit:
+Implement an embedding reliability and health gate so our demo always runs in ML mode:
+
+Add endpoint GET /api/debug/embedding-health that returns:
+
+counts of items/events/hobbies missing embeddings
+
+count of users with tasteEmbedding present
+
+percent of last 50 recommendation responses that used scoringMethod = "hybrid" or "embedding"
+
+current user: hasTasteEmbedding, tasteEmbeddingUpdatedAt
+
+Add endpoint POST /api/admin/backfill-embeddings that:
+
+generates embeddings for any items/events/hobbies missing them
+
+recomputes tasteEmbedding for all users with profiles
+
+returns a summary report of what was backfilled
+
+Update recommendation/social/events/hobbies responses to include scoringMethod that is strictly one of: embedding, hybrid, trait_fallback.
+
+Add a startup warning log if >0 items/events/hobbies are missing embeddings.
+Do not add new features. Keep changes minimal and fully working.
+
+Why this wins: you can show judges a dashboard proving AI is active.
+
+PROMPT 5B — Fix User TasteEmbedding Updates (remove “fire-and-forget” risk)
+
+Goal: Make persona updates deterministic and correct.
+
+Paste to Replit:
+Make tasteEmbedding updates deterministic and correct:
+
+Remove “fire-and-forget” tasteEmbedding updates after interactions. Update synchronously (in-request) for hackathon reliability.
+
+Update tasteEmbedding using ALL interaction weights:
+
+love 2.0, save 1.5, like 1.0, view 0.3, skip -0.5
+
+Implement recomputeTasteEmbedding(userId) that:
+
+fetches user’s interactions across domains
+
+batch fetches embeddings for those items
+
+computes normalized weighted average
+
+persists tasteEmbedding + updatedAt
+
+Call recomputeTasteEmbedding in:
+
+POST /api/onboarding (after profile save)
+
+POST /api/interactions (after insert)
+
+Add minimal unit test or debug log confirming updated tasteEmbedding changes when liking vs skipping.
+No other refactors.
+
+Why this wins: stable ML behavior + you can defend the math.
+
+PROMPT 6 — Make Collaborative Filtering “Real” and Judge-Visible
+
+Goal: CF must feel like recommender science, not a weak co-occurrence hack.
+
+Paste to Replit:
+Upgrade collaborative filtering to be clearly real and explainable:
+
+Compute “neighbors” for a user using tasteEmbedding similarity (cosine). Pick top N=20 neighbors above a similarity threshold.
+
+From neighbors, aggregate their positive interactions (like/love/save), excluding items the current user has interacted with.
+
+Score candidate items by:
+
+sum of neighborWeight * actionWeight
+
+where neighborWeight is neighbor similarity
+
+Return CF results as communityPicks with explanation fields:
+
+becauseLovedByCount
+
+avgNeighborSimilarity
+
+topNeighborExamples (2 user display names)
+
+Merge CF candidates into the main ranker, but also expose a dedicated “People like you loved” section in the API response.
+No UI changes required; just ensure API is complete.
+
+Why this wins: judges instantly recognize collaborative filtering and personalization.
+
+PROMPT 7 — Lock in “Embeddings-First” (no “fallback bragging”)
+
+Goal: Ensure ML is primary. Traits only explain.
+
+Paste to Replit:
+Make the scoring engine embeddings-first:
+
+If both user tasteEmbedding and item/event/hobby embedding exist and pass validation, scoring must use embeddings (or hybrid).
+
+Trait-only scoring must only occur if embeddings are missing/null/invalid.
+
+Add a fallbackReason field when trait_fallback occurs (missing_item_embedding, missing_user_embedding, invalid_embedding_dim, etc.).
+
+Traits are used only to produce explanations (“why”), not to decide the rank unless fallback occurs.
+Keep architecture stable.
+
+Why this wins: your pitch becomes defensible: “ML drives ranking; traits explain it.”

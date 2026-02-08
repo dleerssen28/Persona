@@ -6,7 +6,8 @@ import { buildTraitsFromSelections, generateClusters, computeMatchScore, compute
 import { TRAIT_AXES, type Domain } from "@shared/schema";
 import { GARV_PROFILE } from "./seed";
 import { hybridRecommend, hybridSocialMatch, hybridEventScore, hybridHobbyScore } from "./hybrid-engine";
-import { updateUserTasteEmbedding } from "./embeddings";
+import { recomputeTasteEmbedding, checkEmbeddingHealth, generateBatchEmbeddings, buildEmbeddingText, storeEmbedding, computeWeightedAverageEmbedding } from "./embeddings";
+import { pool } from "./db";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -26,6 +27,9 @@ export async function registerRoutes(
         userId,
         ...GARV_PROFILE,
       });
+
+      await recomputeTasteEmbedding(userId);
+
       res.json(profile);
     } catch (error) {
       console.error("Error bootstrapping demo:", error);
@@ -73,9 +77,8 @@ export async function registerRoutes(
         onboardingComplete: true,
       });
 
-      updateUserTasteEmbedding(userId).catch(err =>
-        console.error("Background embedding update failed:", err)
-      );
+      const embeddingResult = await recomputeTasteEmbedding(userId);
+      console.log(`[onboarding] Embedding recompute for ${userId}:`, embeddingResult);
 
       res.json(profile);
     } catch (error) {
@@ -91,7 +94,7 @@ export async function registerRoutes(
 
       const profile = await storage.getTasteProfile(userId);
       if (!profile) {
-        return res.json([]);
+        return res.json({ recommendations: [], communityPicks: [] });
       }
 
       const allItems = await storage.getItemsByDomain(domain);
@@ -99,7 +102,7 @@ export async function registerRoutes(
       const interactedItemIds = new Set(userInteractions.map((i) => i.itemId));
       const availableItems = allItems.filter((item) => !interactedItemIds.has(item.id));
 
-      const hybridResults = await hybridRecommend(profile, availableItems, userId, domain);
+      const { recommendations: hybridResults, communityPicks } = await hybridRecommend(profile, availableItems, userId, domain);
 
       const scored = hybridResults.map(r => ({
         ...r.item,
@@ -109,9 +112,26 @@ export async function registerRoutes(
         vectorScore: r.vectorScore,
         cfScore: r.cfScore,
         scoringMethod: r.scoringMethod,
+        fallbackReason: r.fallbackReason,
       }));
 
-      res.json(scored.slice(0, 12));
+      res.json({
+        recommendations: scored.slice(0, 12),
+        communityPicks: communityPicks.map(cp => ({
+          itemId: cp.itemId,
+          item: cp.item ? {
+            id: cp.item.id,
+            title: cp.item.title,
+            domain: cp.item.domain,
+            imageUrl: cp.item.imageUrl,
+            tags: cp.item.tags,
+          } : null,
+          score: cp.score,
+          becauseLovedByCount: cp.becauseLovedByCount,
+          avgNeighborSimilarity: cp.avgNeighborSimilarity,
+          topNeighborExamples: cp.topNeighborExamples,
+        })),
+      });
     } catch (error) {
       console.error("Error fetching recommendations:", error);
       res.status(500).json({ message: "Failed to fetch recommendations" });
@@ -143,11 +163,8 @@ export async function registerRoutes(
         weight: weightMap[action] ?? 1.0,
       });
 
-      if (action === "like" || action === "love" || action === "save") {
-        updateUserTasteEmbedding(userId).catch(err =>
-          console.error("Background embedding update failed:", err)
-        );
-      }
+      const embeddingResult = await recomputeTasteEmbedding(userId);
+      console.log(`[interaction] Embedding recompute for ${userId} after ${action}:`, embeddingResult);
 
       res.json(interaction);
     } catch (error) {
@@ -190,6 +207,7 @@ export async function registerRoutes(
           vectorScore: hybridResult.vectorScore,
           explanations: hybridResult.explanations,
           scoringMethod: hybridResult.scoringMethod,
+          fallbackReason: hybridResult.fallbackReason,
           traits,
           topClusters: profile.topClusters || [],
           sharedInterests,
@@ -224,6 +242,7 @@ export async function registerRoutes(
         let distanceBucket: string | null = null;
         let explanation = "";
         let scoringMethod = "none";
+        let fallbackReason = null;
 
         if (profile) {
           const result = hybridEventScore(profile, event, userLat, userLng);
@@ -232,6 +251,7 @@ export async function registerRoutes(
           distanceBucket = result.distanceBucket;
           explanation = result.explanation;
           scoringMethod = result.scoringMethod;
+          fallbackReason = result.fallbackReason;
         }
 
         const rsvps = await storage.getEventRsvps(event.id);
@@ -252,6 +272,7 @@ export async function registerRoutes(
           distanceBucket,
           explanation,
           scoringMethod,
+          fallbackReason,
           hasRsvpd: rsvpEventIds.has(event.id),
           rsvpCount: rsvps.length,
           attendees,
@@ -314,6 +335,7 @@ export async function registerRoutes(
           color: hybridResult.color,
           explanations: hybridResult.explanations,
           scoringMethod: hybridResult.scoringMethod,
+          fallbackReason: hybridResult.fallbackReason,
           topClusters: profile.topClusters || [],
         });
       }
@@ -369,6 +391,7 @@ export async function registerRoutes(
           whyItFits: result.whyItFits,
           vectorScore: result.vectorScore,
           scoringMethod: result.scoringMethod,
+          fallbackReason: result.fallbackReason,
           usersDoingIt: Math.floor(Math.random() * 50) + 5,
         };
       });
@@ -379,6 +402,129 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching hobbies:", error);
       res.status(500).json({ message: "Failed to fetch hobbies" });
+    }
+  });
+
+  app.get("/api/debug/embedding-health", async (_req: any, res) => {
+    try {
+      const health = await checkEmbeddingHealth();
+
+      const itemCoverage = health.totalItems > 0
+        ? Math.round(((health.totalItems - health.itemsMissingEmbeddings) / health.totalItems) * 100)
+        : 0;
+      const eventCoverage = health.totalEvents > 0
+        ? Math.round(((health.totalEvents - health.eventsMissingEmbeddings) / health.totalEvents) * 100)
+        : 0;
+      const hobbyCoverage = health.totalHobbies > 0
+        ? Math.round(((health.totalHobbies - health.hobbiesMissingEmbeddings) / health.totalHobbies) * 100)
+        : 0;
+      const userCoverage = health.totalUsers > 0
+        ? Math.round((health.usersWithTasteEmbedding / health.totalUsers) * 100)
+        : 0;
+
+      const allCovered = health.itemsMissingEmbeddings === 0 &&
+        health.eventsMissingEmbeddings === 0 &&
+        health.hobbiesMissingEmbeddings === 0;
+
+      res.json({
+        status: allCovered ? "healthy" : "degraded",
+        embeddings: {
+          items: { total: health.totalItems, missing: health.itemsMissingEmbeddings, coverage: `${itemCoverage}%` },
+          events: { total: health.totalEvents, missing: health.eventsMissingEmbeddings, coverage: `${eventCoverage}%` },
+          hobbies: { total: health.totalHobbies, missing: health.hobbiesMissingEmbeddings, coverage: `${hobbyCoverage}%` },
+          users: { total: health.totalUsers, withEmbedding: health.usersWithTasteEmbedding, coverage: `${userCoverage}%` },
+        },
+        scoringMode: allCovered ? "embedding-first (ML primary)" : "trait_fallback (embeddings missing)",
+        note: allCovered
+          ? "All content has embeddings. ML drives ranking; traits explain it."
+          : `Missing embeddings: ${health.itemsMissingEmbeddings} items, ${health.eventsMissingEmbeddings} events, ${health.hobbiesMissingEmbeddings} hobbies. Run POST /api/admin/backfill-embeddings to fix.`,
+      });
+    } catch (error) {
+      console.error("Error checking embedding health:", error);
+      res.status(500).json({ message: "Failed to check embedding health" });
+    }
+  });
+
+  app.post("/api/admin/backfill-embeddings", isAuthenticated, async (req: any, res) => {
+    try {
+      const report: Record<string, any> = {};
+
+      const missingItems = await pool.query(
+        "SELECT id, title, tags, description FROM items WHERE embedding IS NULL"
+      );
+      if (missingItems.rows.length > 0) {
+        const texts = missingItems.rows.map((row: any) => buildEmbeddingText({
+          title: row.title,
+          tags: row.tags,
+          description: row.description,
+        }));
+        const embeddings = await generateBatchEmbeddings(texts);
+        for (let i = 0; i < missingItems.rows.length; i++) {
+          await storeEmbedding("items", missingItems.rows[i].id, embeddings[i]);
+        }
+        report.items = { backfilled: missingItems.rows.length };
+      } else {
+        report.items = { backfilled: 0, status: "all present" };
+      }
+
+      const missingEvents = await pool.query(
+        "SELECT id, title, tags, description FROM events WHERE embedding IS NULL"
+      );
+      if (missingEvents.rows.length > 0) {
+        const texts = missingEvents.rows.map((row: any) => buildEmbeddingText({
+          title: row.title,
+          tags: row.tags,
+          description: row.description,
+        }));
+        const embeddings = await generateBatchEmbeddings(texts);
+        for (let i = 0; i < missingEvents.rows.length; i++) {
+          await storeEmbedding("events", missingEvents.rows[i].id, embeddings[i]);
+        }
+        report.events = { backfilled: missingEvents.rows.length };
+      } else {
+        report.events = { backfilled: 0, status: "all present" };
+      }
+
+      const missingHobbies = await pool.query(
+        "SELECT id, title, tags, description FROM hobbies WHERE embedding IS NULL"
+      );
+      if (missingHobbies.rows.length > 0) {
+        const texts = missingHobbies.rows.map((row: any) => buildEmbeddingText({
+          title: row.title,
+          tags: row.tags,
+          description: row.description,
+        }));
+        const embeddings = await generateBatchEmbeddings(texts);
+        for (let i = 0; i < missingHobbies.rows.length; i++) {
+          await storeEmbedding("hobbies", missingHobbies.rows[i].id, embeddings[i]);
+        }
+        report.hobbies = { backfilled: missingHobbies.rows.length };
+      } else {
+        report.hobbies = { backfilled: 0, status: "all present" };
+      }
+
+      const profilesWithoutEmbeddings = await pool.query(`
+        SELECT tp.id, tp.user_id
+        FROM taste_profiles tp
+        WHERE tp.embedding IS NULL AND tp.onboarding_complete = true
+      `);
+      let profilesBackfilled = 0;
+      for (const row of profilesWithoutEmbeddings.rows) {
+        const result = await recomputeTasteEmbedding(row.user_id);
+        if (result.updated) profilesBackfilled++;
+      }
+      report.userProfiles = {
+        checked: profilesWithoutEmbeddings.rows.length,
+        backfilled: profilesBackfilled,
+      };
+
+      const health = await checkEmbeddingHealth();
+      report.postBackfillHealth = health;
+
+      res.json({ success: true, report });
+    } catch (error) {
+      console.error("Error backfilling embeddings:", error);
+      res.status(500).json({ message: "Failed to backfill embeddings", error: String(error) });
     }
   });
 

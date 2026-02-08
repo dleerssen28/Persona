@@ -119,9 +119,10 @@ function DomainRecommendations({ domain }: { domain: ContentDomain }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const { data: items, isLoading } = useQuery<RecommendedItem[]>({
+  const { data: responseData, isLoading } = useQuery<{ recommendations: RecommendedItem[]; communityPicks: any[] }>({
     queryKey: ["/api/recommendations", domain],
   });
+  const items = responseData?.recommendations;
 
   const interactMutation = useMutation({
     mutationFn: async ({ itemId, action }: { itemId: string; action: string }) => {

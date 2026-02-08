@@ -5,28 +5,49 @@ import {
   isValidEmbedding,
   findSimilarItemsByDomain,
   findSimilarByEmbedding,
-  getCollaborativeFilteringSignals,
   haversineDistance,
   getDistanceBucket,
 } from "./embeddings";
 import { getTraitsFromProfile, computeMatchScore as traitMatchScore, computeItemMatchScore as traitItemMatchScore, computeHobbyMatch as traitHobbyMatch } from "./taste-engine";
+import { getEmbeddingNeighborCF } from "./collaborative-filtering";
+
+export type ScoringMethod = "embedding" | "hybrid" | "trait_fallback";
+
+export type FallbackReason =
+  | "missing_user_embedding"
+  | "missing_item_embedding"
+  | "missing_both_embeddings"
+  | "invalid_embedding_dim"
+  | null;
 
 const WEIGHTS = {
   VECTOR_SIM: 0.55,
   COLLAB_FILTER: 0.25,
-  TRAIT_SIM: 0.20,
+  TRAIT_EXPLAIN: 0.20,
 };
 
 const SOCIAL_WEIGHTS = {
   VECTOR_SIM: 0.60,
-  TRAIT_SIM: 0.40,
+  TRAIT_EXPLAIN: 0.40,
 };
 
 const EVENT_WEIGHTS = {
   VECTOR_SIM: 0.50,
-  TRAIT_SIM: 0.25,
+  TRAIT_EXPLAIN: 0.25,
   GEO_BONUS: 0.25,
 };
+
+function determineFallbackReason(
+  profileEmbedding: number[] | null | undefined,
+  itemEmbedding: number[] | null | undefined
+): FallbackReason {
+  const hasProfile = isValidEmbedding(profileEmbedding);
+  const hasItem = isValidEmbedding(itemEmbedding);
+  if (!hasProfile && !hasItem) return "missing_both_embeddings";
+  if (!hasProfile) return "missing_user_embedding";
+  if (!hasItem) return "missing_item_embedding";
+  return null;
+}
 
 export interface HybridRecommendation {
   item: Item;
@@ -36,7 +57,17 @@ export interface HybridRecommendation {
   traitScore: number;
   explanation: string;
   traitExplanation: string;
-  scoringMethod: "hybrid" | "vector" | "trait-only";
+  scoringMethod: ScoringMethod;
+  fallbackReason: FallbackReason;
+}
+
+export interface CommunityPick {
+  itemId: string;
+  item: Item | null;
+  score: number;
+  becauseLovedByCount: number;
+  avgNeighborSimilarity: number;
+  topNeighborExamples: string[];
 }
 
 export interface HybridSocialMatch {
@@ -46,7 +77,8 @@ export interface HybridSocialMatch {
   traitScore: number;
   color: "green" | "yellow" | "grey";
   explanations: string[];
-  scoringMethod: "hybrid" | "trait-only";
+  scoringMethod: ScoringMethod;
+  fallbackReason: FallbackReason;
 }
 
 export interface HybridEventScore {
@@ -57,7 +89,8 @@ export interface HybridEventScore {
   predictedEnjoyment: number;
   distanceBucket: string | null;
   explanation: string;
-  scoringMethod: "hybrid" | "trait-only";
+  scoringMethod: ScoringMethod;
+  fallbackReason: FallbackReason;
 }
 
 export interface HybridHobbyScore {
@@ -66,7 +99,8 @@ export interface HybridHobbyScore {
   vectorScore: number;
   traitScore: number;
   whyItFits: string;
-  scoringMethod: "hybrid" | "trait-only";
+  scoringMethod: ScoringMethod;
+  fallbackReason: FallbackReason;
 }
 
 function normalizeScore(score: number, min: number = 0, max: number = 100): number {
@@ -78,37 +112,50 @@ export async function hybridRecommend(
   availableItems: Item[],
   userId: string,
   domain: string
-): Promise<HybridRecommendation[]> {
+): Promise<{ recommendations: HybridRecommendation[]; communityPicks: CommunityPick[] }> {
   const hasProfileEmbedding = isValidEmbedding(profile.embedding);
   const itemsWithEmbeddings = availableItems.filter(i => isValidEmbedding(i.embedding));
   const useVectors = hasProfileEmbedding && itemsWithEmbeddings.length > 0;
 
   let vectorScores: Map<string, number> = new Map();
-  let cfScores: Map<string, number> = new Map();
-  let hasCfData = false;
+  let communityPicks: CommunityPick[] = [];
 
   if (useVectors) {
     for (const item of itemsWithEmbeddings) {
       const sim = computeCosineSimilarity(profile.embedding!, item.embedding!);
       vectorScores.set(item.id, cosineSimilarityToScore(sim));
     }
+  }
 
+  let cfScores: Map<string, number> = new Map();
+  let hasCfData = false;
+
+  if (hasProfileEmbedding) {
     try {
-      const cfSignals = await getCollaborativeFilteringSignals(userId, domain, 50);
-      if (cfSignals.length > 0) {
+      const cfResult = await getEmbeddingNeighborCF(userId, domain, profile.embedding!, 20);
+      if (cfResult.candidates.length > 0) {
         hasCfData = true;
-        const maxCf = Math.max(...cfSignals.map(s => s.cfScore));
-        for (const signal of cfSignals) {
-          cfScores.set(signal.itemId, normalizeScore(signal.cfScore, 0, maxCf));
+        const maxCf = Math.max(...cfResult.candidates.map(c => c.score));
+        for (const candidate of cfResult.candidates) {
+          cfScores.set(candidate.itemId, normalizeScore(candidate.score, 0, maxCf));
         }
+
+        const itemMap = new Map(availableItems.map(i => [i.id, i]));
+        communityPicks = cfResult.candidates.slice(0, 10).map(c => ({
+          itemId: c.itemId,
+          item: itemMap.get(c.itemId) || null,
+          score: cfScores.get(c.itemId) || 0,
+          becauseLovedByCount: c.lovedByCount,
+          avgNeighborSimilarity: c.avgNeighborSimilarity,
+          topNeighborExamples: c.topNeighborNames,
+        }));
       }
-    } catch {
-    }
+    } catch {}
   }
 
   const NEUTRAL_CF = 50;
 
-  const results: HybridRecommendation[] = availableItems.map(item => {
+  const recommendations: HybridRecommendation[] = availableItems.map(item => {
     const itemTraits: Record<string, number> = {};
     for (const axis of TRAIT_AXES) {
       const key = `trait${axis.charAt(0).toUpperCase() + axis.slice(1)}` as keyof typeof item;
@@ -117,24 +164,30 @@ export async function hybridRecommend(
     const traitResult = traitItemMatchScore(profile, itemTraits);
     const traitScore = traitResult.score;
 
+    const fallbackReason = determineFallbackReason(profile.embedding, item.embedding);
+
     if (useVectors && vectorScores.has(item.id)) {
       const vs = vectorScores.get(item.id)!;
       const cf = cfScores.get(item.id) ?? NEUTRAL_CF;
 
       let hybridScore: number;
+      let scoringMethod: ScoringMethod;
+
       if (hasCfData) {
         hybridScore = Math.round(
           vs * WEIGHTS.VECTOR_SIM +
           cf * WEIGHTS.COLLAB_FILTER +
-          traitScore * WEIGHTS.TRAIT_SIM
+          traitScore * WEIGHTS.TRAIT_EXPLAIN
         );
+        scoringMethod = "hybrid";
       } else {
         const adjustedVectorWeight = WEIGHTS.VECTOR_SIM + WEIGHTS.COLLAB_FILTER * 0.6;
-        const adjustedTraitWeight = WEIGHTS.TRAIT_SIM + WEIGHTS.COLLAB_FILTER * 0.4;
+        const adjustedTraitWeight = WEIGHTS.TRAIT_EXPLAIN + WEIGHTS.COLLAB_FILTER * 0.4;
         hybridScore = Math.round(
           vs * adjustedVectorWeight +
           traitScore * adjustedTraitWeight
         );
+        scoringMethod = "embedding";
       }
 
       const explanationParts: string[] = [];
@@ -151,7 +204,8 @@ export async function hybridRecommend(
         traitScore,
         explanation: explanationParts[0],
         traitExplanation: traitResult.explanation,
-        scoringMethod: "hybrid" as const,
+        scoringMethod,
+        fallbackReason: null,
       };
     }
 
@@ -163,12 +217,13 @@ export async function hybridRecommend(
       traitScore,
       explanation: traitResult.explanation,
       traitExplanation: traitResult.explanation,
-      scoringMethod: "trait-only" as const,
+      scoringMethod: "trait_fallback" as ScoringMethod,
+      fallbackReason,
     };
   });
 
-  results.sort((a, b) => b.hybridScore - a.hybridScore);
-  return results;
+  recommendations.sort((a, b) => b.hybridScore - a.hybridScore);
+  return { recommendations, communityPicks };
 }
 
 export function hybridSocialMatch(
@@ -177,6 +232,7 @@ export function hybridSocialMatch(
 ): HybridSocialMatch {
   const traitResult = traitMatchScore(myProfile, otherProfile);
   const hasEmbeddings = isValidEmbedding(myProfile.embedding) && isValidEmbedding(otherProfile.embedding);
+  const fallbackReason = determineFallbackReason(myProfile.embedding, otherProfile.embedding);
 
   if (hasEmbeddings) {
     const sim = computeCosineSimilarity(myProfile.embedding!, otherProfile.embedding!);
@@ -184,7 +240,7 @@ export function hybridSocialMatch(
 
     const hybridScore = Math.round(
       vectorScore * SOCIAL_WEIGHTS.VECTOR_SIM +
-      traitResult.score * SOCIAL_WEIGHTS.TRAIT_SIM
+      traitResult.score * SOCIAL_WEIGHTS.TRAIT_EXPLAIN
     );
 
     const finalScore = Math.max(15, Math.min(100, hybridScore));
@@ -203,7 +259,8 @@ export function hybridSocialMatch(
       traitScore: traitResult.score,
       color: getMatchColor(finalScore),
       explanations,
-      scoringMethod: "hybrid",
+      scoringMethod: "embedding",
+      fallbackReason: null,
     };
   }
 
@@ -214,7 +271,8 @@ export function hybridSocialMatch(
     traitScore: traitResult.score,
     color: traitResult.color,
     explanations: traitResult.explanations,
-    scoringMethod: "trait-only",
+    scoringMethod: "trait_fallback",
+    fallbackReason,
   };
 }
 
@@ -230,6 +288,7 @@ export function hybridEventScore(
     eventTraits[axis] = (event[key] as number) ?? 0.5;
   }
   const traitResult = traitItemMatchScore(profile, eventTraits);
+  const fallbackReason = determineFallbackReason(profile.embedding, event.embedding);
 
   const hasEmbeddings = isValidEmbedding(profile.embedding) && isValidEmbedding(event.embedding);
   let distanceBucket: string | null = null;
@@ -252,7 +311,7 @@ export function hybridEventScore(
 
     const hybridScore = Math.round(
       vectorScore * EVENT_WEIGHTS.VECTOR_SIM +
-      traitResult.score * EVENT_WEIGHTS.TRAIT_SIM +
+      traitResult.score * EVENT_WEIGHTS.TRAIT_EXPLAIN +
       geoBonus * EVENT_WEIGHTS.GEO_BONUS
     );
     const finalScore = Math.max(15, Math.min(100, hybridScore));
@@ -275,7 +334,8 @@ export function hybridEventScore(
       predictedEnjoyment: Math.max(15, Math.min(100, predictedEnjoyment)),
       distanceBucket,
       explanation: explanationParts.join(". "),
-      scoringMethod: "hybrid",
+      scoringMethod: "embedding",
+      fallbackReason: null,
     };
   }
 
@@ -287,7 +347,8 @@ export function hybridEventScore(
     predictedEnjoyment: traitResult.score,
     distanceBucket,
     explanation: traitResult.explanation,
-    scoringMethod: "trait-only",
+    scoringMethod: "trait_fallback",
+    fallbackReason,
   };
 }
 
@@ -301,6 +362,7 @@ export function hybridHobbyScore(
     hobbyTraits[axis] = (hobby[key] as number) ?? 0.5;
   }
   const traitResult = traitHobbyMatch(profile, hobbyTraits);
+  const fallbackReason = determineFallbackReason(profile.embedding, hobby.embedding);
 
   const hasEmbeddings = isValidEmbedding(profile.embedding) && isValidEmbedding(hobby.embedding);
 
@@ -325,7 +387,8 @@ export function hybridHobbyScore(
       vectorScore,
       traitScore: traitResult.score,
       whyItFits,
-      scoringMethod: "hybrid",
+      scoringMethod: "embedding",
+      fallbackReason: null,
     };
   }
 
@@ -335,6 +398,7 @@ export function hybridHobbyScore(
     vectorScore: 0,
     traitScore: traitResult.score,
     whyItFits: traitResult.whyItFits,
-    scoringMethod: "trait-only",
+    scoringMethod: "trait_fallback",
+    fallbackReason,
   };
 }

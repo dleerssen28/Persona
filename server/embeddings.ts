@@ -267,17 +267,19 @@ export function getDistanceBucket(distanceKm: number): string {
   return "> 100 km";
 }
 
-export async function updateUserTasteEmbedding(userId: string): Promise<void> {
+export async function recomputeTasteEmbedding(userId: string): Promise<{ updated: boolean; interactionCount: number }> {
   const interactionsResult = await pool.query(`
-    SELECT i.item_id, i.weight, it.embedding
+    SELECT i.item_id, i.action, i.weight, it.embedding
     FROM interactions i
     JOIN items it ON i.item_id = it.id
-    WHERE i.user_id = $1 AND i.weight > 0 AND it.embedding IS NOT NULL
+    WHERE i.user_id = $1 AND it.embedding IS NOT NULL
     ORDER BY i.created_at DESC
-    LIMIT 100
+    LIMIT 200
   `, [userId]);
 
-  if (interactionsResult.rows.length === 0) return;
+  if (interactionsResult.rows.length === 0) {
+    return { updated: false, interactionCount: 0 };
+  }
 
   const embeddings: number[][] = [];
   const weights: number[] = [];
@@ -289,13 +291,16 @@ export async function updateUserTasteEmbedding(userId: string): Promise<void> {
     } else {
       emb = row.embedding;
     }
-    if (emb && emb.length > 0) {
+    if (emb && emb.length === EMBEDDING_DIM) {
       embeddings.push(emb);
-      weights.push(row.weight);
+      const w = parseFloat(row.weight);
+      weights.push(w);
     }
   }
 
-  if (embeddings.length === 0) return;
+  if (embeddings.length === 0) {
+    return { updated: false, interactionCount: interactionsResult.rows.length };
+  }
 
   const profileEmbedding = computeWeightedAverageEmbedding(embeddings, weights);
 
@@ -306,5 +311,42 @@ export async function updateUserTasteEmbedding(userId: string): Promise<void> {
 
   if (profileResult.rows.length > 0) {
     await storeEmbedding("taste_profiles", profileResult.rows[0].id, profileEmbedding);
+    console.log(`[tasteEmbedding] Recomputed for user ${userId}: ${embeddings.length} items, weights: [${weights.slice(0, 5).join(", ")}${weights.length > 5 ? "..." : ""}]`);
+    return { updated: true, interactionCount: embeddings.length };
   }
+
+  return { updated: false, interactionCount: embeddings.length };
+}
+
+export async function checkEmbeddingHealth(): Promise<{
+  itemsMissingEmbeddings: number;
+  eventsMissingEmbeddings: number;
+  hobbiesMissingEmbeddings: number;
+  usersWithTasteEmbedding: number;
+  totalUsers: number;
+  totalItems: number;
+  totalEvents: number;
+  totalHobbies: number;
+}> {
+  const results = await Promise.all([
+    pool.query("SELECT COUNT(*) as count FROM items WHERE embedding IS NULL"),
+    pool.query("SELECT COUNT(*) as count FROM events WHERE embedding IS NULL"),
+    pool.query("SELECT COUNT(*) as count FROM hobbies WHERE embedding IS NULL"),
+    pool.query("SELECT COUNT(*) as count FROM taste_profiles WHERE embedding IS NOT NULL"),
+    pool.query("SELECT COUNT(*) as count FROM taste_profiles"),
+    pool.query("SELECT COUNT(*) as count FROM items"),
+    pool.query("SELECT COUNT(*) as count FROM events"),
+    pool.query("SELECT COUNT(*) as count FROM hobbies"),
+  ]);
+
+  return {
+    itemsMissingEmbeddings: parseInt(results[0].rows[0].count),
+    eventsMissingEmbeddings: parseInt(results[1].rows[0].count),
+    hobbiesMissingEmbeddings: parseInt(results[2].rows[0].count),
+    usersWithTasteEmbedding: parseInt(results[3].rows[0].count),
+    totalUsers: parseInt(results[4].rows[0].count),
+    totalItems: parseInt(results[5].rows[0].count),
+    totalEvents: parseInt(results[6].rows[0].count),
+    totalHobbies: parseInt(results[7].rows[0].count),
+  };
 }

@@ -46,14 +46,19 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - `GET /api/social/matches` - Get matched users with scores
 - `GET /api/explore/hobbies` - Get hobby recommendations
 - `POST /api/demo/bootstrap` - Auto-create demo profile for authenticated user
+- `GET /api/debug/embedding-health` - Dashboard: embedding coverage, scoring mode status
+- `POST /api/admin/backfill-embeddings` - Generate missing embeddings + recompute user profiles
 
-### Hybrid AI/ML Engine
+### Hybrid AI/ML Engine (Embeddings-First)
+- **Embeddings-First Architecture**: ML drives ranking; traits only explain. Fallback to traits only if embeddings missing.
 - **Vector Similarity (55%)**: Neural embeddings via OpenAI text-embedding-3-small, cosine similarity scoring
-- **Collaborative Filtering (25%)**: SQL-based user-item co-occurrence for "users like you also liked"
-- **Trait Explainability (20%)**: 8-axis trait algebra for human-readable explanations
-- Graceful fallback to trait-only scoring when embeddings unavailable
+- **Collaborative Filtering (25%)**: Embedding-based neighbor discovery (top 20 users by tasteEmbedding cosine similarity), weighted action aggregation (love 2.0, save 1.5, like 1.0, view 0.3, skip -0.5), communityPicks with explanations
+- **Trait Explainability (20%)**: 8-axis trait algebra for human-readable "why" explanations only
+- **Scoring Methods**: `embedding` (vector-only), `hybrid` (vector+CF+traits), `trait_fallback` (no embeddings)
+- **fallbackReason**: `missing_user_embedding`, `missing_item_embedding`, `missing_both_embeddings`, `invalid_embedding_dim`
 - Geolocation-aware event scoring with Haversine distance + privacy radius
-- User taste embeddings updated async on interaction (weighted average of liked item embeddings)
+- User taste embeddings recomputed synchronously on every interaction and onboarding (deterministic, not fire-and-forget)
+- Startup warning logged if any items/events/hobbies missing embeddings
 
 ### Taste Engine (Explainability Layer)
 - Trait-based similarity scoring across 8 axes: novelty, intensity, cozy, strategy, social, creativity, nostalgia, adventure
@@ -87,11 +92,12 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - `event_rsvps` - RSVP records linking users to events
 
 ### Key Backend Files
-- `server/hybrid-engine.ts` - Hybrid scoring: vector sim + CF + traits
-- `server/embeddings.ts` - OpenAI embedding generation, pgvector queries, user embedding updates
-- `server/taste-engine.ts` - 8-axis trait algebra (explainability layer)
-- `server/seed.ts` - Database seeding with embedding generation pipeline
-- `server/routes.ts` - Express API routes using hybrid engine
+- `server/hybrid-engine.ts` - Embeddings-first scoring: vector sim + CF + traits (explainability only)
+- `server/collaborative-filtering.ts` - Embedding-based neighbor CF with weighted action aggregation
+- `server/embeddings.ts` - OpenAI embeddings, recomputeTasteEmbedding (synchronous), checkEmbeddingHealth
+- `server/taste-engine.ts` - 8-axis trait algebra (explainability layer only)
+- `server/seed.ts` - Database seeding with embedding pipeline + startup health warning
+- `server/routes.ts` - Express API routes including debug/health and admin/backfill endpoints
 
 ## User Preferences
 - Dark mode by default
