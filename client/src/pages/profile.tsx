@@ -7,11 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TRAIT_AXES, type TasteProfile, type Item } from "@shared/schema";
-import { Sparkles, TrendingUp, Grip, ChevronUp, ChevronDown, Image as ImageIcon, Film, Music, Gamepad2, Pencil } from "lucide-react";
+import {
+  Sparkles, TrendingUp, Grip, ChevronUp, ChevronDown,
+  Image as ImageIcon, Film, Music, Gamepad2,
+  Settings, Palette, Upload, X, Check
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
-import profileCover from "@/assets/images/profile-cover.jpg";
+import { useState, useRef, useCallback } from "react";
 import { getHobbyImage } from "@/lib/hobby-images";
+
+import themeOceanic from "@/assets/images/theme-oceanic.png";
+import themeAurora from "@/assets/images/theme-aurora.png";
+import themeEmber from "@/assets/images/theme-ember.png";
 
 const TRAIT_LABELS: Record<string, string> = {
   novelty: "Novelty Seeker",
@@ -40,8 +47,7 @@ const DEFAULT_SECTIONS: ProfileSection[] = [
   { id: "top-traits", title: "Top 3 Traits", visible: true },
   { id: "mydna-top3", title: "myDNA Top 3", visible: true },
   { id: "taste-dna", title: "Taste DNA Radar", visible: true },
-  { id: "personal-images", title: "Personal Images", visible: true },
-  { id: "reels", title: "Reels & Hobby Tags", visible: true },
+  { id: "gallery", title: "Gallery (Hobby Tags)", visible: true },
 ];
 
 interface HobbyWithMatch {
@@ -52,10 +58,50 @@ interface HobbyWithMatch {
   whyItFits: string;
 }
 
+type ThemeId = "oceanic" | "aurora" | "ember" | "custom";
+
+interface ThemeConfig {
+  id: ThemeId;
+  label: string;
+  image: string;
+  accent: string;
+  glassColor: string;
+}
+
+const THEMES: ThemeConfig[] = [
+  {
+    id: "oceanic",
+    label: "Oceanic",
+    image: themeOceanic,
+    accent: "from-cyan-500/20 to-blue-600/20",
+    glassColor: "bg-cyan-950/40 border-cyan-400/15",
+  },
+  {
+    id: "aurora",
+    label: "Aurora",
+    image: themeAurora,
+    accent: "from-green-500/20 to-purple-600/20",
+    glassColor: "bg-indigo-950/40 border-green-400/15",
+  },
+  {
+    id: "ember",
+    label: "Ember",
+    image: themeEmber,
+    accent: "from-orange-500/20 to-red-600/20",
+    glassColor: "bg-red-950/40 border-orange-400/15",
+  },
+];
+
+const GLASS_BASE = "backdrop-blur-xl border rounded-md shadow-lg";
+
 export default function ProfilePage() {
   const { user } = useAuth();
   const [sections, setSections] = useState<ProfileSection[]>(DEFAULT_SECTIONS);
-  const [editing, setEditing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editingLayout, setEditingLayout] = useState(false);
+  const [activeTheme, setActiveTheme] = useState<ThemeId>("oceanic");
+  const [customThemeImage, setCustomThemeImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery<TasteProfile>({
     queryKey: ["/api/taste-profile"],
@@ -77,6 +123,17 @@ export default function ProfilePage() {
     queryKey: ["/api/explore/hobbies"],
   });
 
+  const handleCustomImage = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setCustomThemeImage(ev.target?.result as string);
+      setActiveTheme("custom");
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-6 max-w-3xl mx-auto">
@@ -86,6 +143,12 @@ export default function ProfilePage() {
       </div>
     );
   }
+
+  const currentTheme = THEMES.find((t) => t.id === activeTheme) ?? THEMES[0];
+  const themeImage = activeTheme === "custom" && customThemeImage ? customThemeImage : currentTheme.image;
+  const glassClass = activeTheme === "custom"
+    ? "bg-black/40 border-white/15"
+    : currentTheme.glassColor;
 
   const traits: Record<string, number> = profile
     ? {
@@ -108,7 +171,7 @@ export default function ProfilePage() {
   const topSong = musicRecs?.[0];
   const topGame = gameRecs?.[0];
 
-  const topHobbies = hobbies?.slice(0, 3) ?? [];
+  const topHobbies = hobbies?.slice(0, 6) ?? [];
 
   function moveSection(idx: number, dir: -1 | 1) {
     setSections((prev) => {
@@ -130,10 +193,10 @@ export default function ProfilePage() {
 
   const sectionRenderers: Record<string, () => JSX.Element | null> = {
     "top-traits": () => (
-      <Card className="p-5" data-testid="section-top-traits">
+      <div className={cn(GLASS_BASE, glassClass, "p-5")} data-testid="section-top-traits">
         <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">Top 3 Traits</h2>
+          <TrendingUp className="h-4 w-4 text-white/80" />
+          <h2 className="font-semibold text-white">Top 3 Traits</h2>
         </div>
         <div className="grid grid-cols-3 gap-3">
           {topTraits.map(([key, val], idx) => {
@@ -141,10 +204,10 @@ export default function ProfilePage() {
             return (
               <div
                 key={key}
-                className="p-3 rounded-md bg-muted/50 text-center space-y-1"
+                className="p-3 rounded-md bg-white/10 text-center space-y-1"
               >
                 <span className={cn("text-xs font-bold tabular-nums", color.text)}>#{idx + 1}</span>
-                <div className="text-xs font-medium text-muted-foreground">{TRAIT_LABELS[key]}</div>
+                <div className="text-xs font-medium text-white/60">{TRAIT_LABELS[key]}</div>
                 <div className={cn("text-xl font-bold tabular-nums", color.text)}>
                   {Math.round(val * 100)}%
                 </div>
@@ -152,55 +215,55 @@ export default function ProfilePage() {
             );
           })}
         </div>
-      </Card>
+      </div>
     ),
 
     "mydna-top3": () => (
-      <Card className="p-5" data-testid="section-mydna-top3">
+      <div className={cn(GLASS_BASE, glassClass, "p-5")} data-testid="section-mydna-top3">
         <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">myDNA Top 3</h2>
+          <Sparkles className="h-4 w-4 text-white/80" />
+          <h2 className="font-semibold text-white">myDNA Top 3</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {topMovie && (
-            <div className="p-3 rounded-md bg-muted/50 space-y-1">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="p-3 rounded-md bg-white/10 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs text-white/60">
                 <Film className="h-3 w-3" />
                 <span>Top Movie</span>
               </div>
-              <div className="font-semibold text-sm">{topMovie.title}</div>
-              <Badge variant="secondary" className="text-[10px]">{topMovie.matchScore}% match</Badge>
+              <div className="font-semibold text-sm text-white">{topMovie.title}</div>
+              <Badge variant="secondary" className="text-[10px] bg-white/15 text-white/80 border-white/10">{topMovie.matchScore}% match</Badge>
             </div>
           )}
           {topSong && (
-            <div className="p-3 rounded-md bg-muted/50 space-y-1">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="p-3 rounded-md bg-white/10 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs text-white/60">
                 <Music className="h-3 w-3" />
                 <span>Top Music</span>
               </div>
-              <div className="font-semibold text-sm">{topSong.title}</div>
-              <Badge variant="secondary" className="text-[10px]">{topSong.matchScore}% match</Badge>
+              <div className="font-semibold text-sm text-white">{topSong.title}</div>
+              <Badge variant="secondary" className="text-[10px] bg-white/15 text-white/80 border-white/10">{topSong.matchScore}% match</Badge>
             </div>
           )}
           {topGame && (
-            <div className="p-3 rounded-md bg-muted/50 space-y-1">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="p-3 rounded-md bg-white/10 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs text-white/60">
                 <Gamepad2 className="h-3 w-3" />
                 <span>Top Game</span>
               </div>
-              <div className="font-semibold text-sm">{topGame.title}</div>
-              <Badge variant="secondary" className="text-[10px]">{topGame.matchScore}% match</Badge>
+              <div className="font-semibold text-sm text-white">{topGame.title}</div>
+              <Badge variant="secondary" className="text-[10px] bg-white/15 text-white/80 border-white/10">{topGame.matchScore}% match</Badge>
             </div>
           )}
         </div>
-      </Card>
+      </div>
     ),
 
     "taste-dna": () => (
-      <Card className="p-5" data-testid="section-taste-dna">
+      <div className={cn(GLASS_BASE, glassClass, "p-5")} data-testid="section-taste-dna">
         <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">Taste DNA</h2>
+          <Sparkles className="h-4 w-4 text-white/80" />
+          <h2 className="font-semibold text-white">Taste DNA</h2>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <RadarChart traits={traits} size={220} />
@@ -211,14 +274,14 @@ export default function ProfilePage() {
               return (
                 <div key={axis} className="space-y-0.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-medium text-muted-foreground">
+                    <span className="text-[11px] font-medium text-white/60">
                       {TRAIT_LABELS[axis]}
                     </span>
                     <span className={cn("text-[11px] font-semibold tabular-nums", color.text)}>
                       {Math.round(val * 100)}%
                     </span>
                   </div>
-                  <div className="h-1.5 bg-muted rounded-md overflow-hidden">
+                  <div className="h-1.5 bg-white/10 rounded-md overflow-hidden">
                     <div
                       className={cn("h-full rounded-md transition-all duration-700 ease-out", color.bar)}
                       style={{ width: `${val * 100}%` }}
@@ -229,25 +292,25 @@ export default function ProfilePage() {
             })}
           </div>
         </div>
-      </Card>
+      </div>
     ),
 
-    "personal-images": () => (
-      <Card className="p-5" data-testid="section-personal-images">
+    "gallery": () => (
+      <div className={cn(GLASS_BASE, glassClass, "p-5")} data-testid="section-gallery">
         <div className="flex items-center gap-2 mb-4">
-          <ImageIcon className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">Personal Images</h2>
+          <ImageIcon className="h-4 w-4 text-white/80" />
+          <h2 className="font-semibold text-white">Gallery <span className="text-white/50 font-normal">(Hobby Tags)</span></h2>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 mb-3">
           {topHobbies.slice(0, 3).map((hobby) => {
             const img = getHobbyImage(hobby.title);
             return (
-              <div key={hobby.id} className="relative aspect-square rounded-md overflow-hidden bg-muted">
+              <div key={hobby.id} className="relative aspect-square rounded-md overflow-hidden bg-white/5">
                 {img ? (
                   <img src={img} alt={hobby.title} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                    <ImageIcon className="h-8 w-8 opacity-30" />
+                  <div className="w-full h-full flex items-center justify-center">
+                    <ImageIcon className="h-8 w-8 text-white/20" />
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -258,35 +321,23 @@ export default function ProfilePage() {
             );
           })}
         </div>
-        <p className="text-xs text-muted-foreground mt-3 text-center">
-          Your top hobby matches visualized
-        </p>
-      </Card>
-    ),
-
-    "reels": () => (
-      <Card className="p-5" data-testid="section-reels">
-        <div className="flex items-center gap-2 mb-4">
-          <Film className="h-4 w-4 text-primary" />
-          <h2 className="font-semibold">Reels & Hobby Tags</h2>
-        </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {topHobbies.map((hobby) => {
             const img = getHobbyImage(hobby.title);
             const scoreColor = hobby.matchScore >= 75 ? "green" : hobby.matchScore >= 50 ? "yellow" : "grey";
             const colorClasses = {
-              green: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-              yellow: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-              grey: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+              green: "bg-emerald-500/20 text-emerald-300 border-emerald-400/30",
+              yellow: "bg-amber-500/20 text-amber-300 border-amber-400/30",
+              grey: "bg-zinc-500/20 text-zinc-300 border-zinc-400/30",
             };
             return (
               <div key={hobby.id} className="flex-shrink-0 w-28">
-                <div className="relative aspect-[9/16] rounded-md overflow-hidden bg-muted">
+                <div className="relative aspect-[9/16] rounded-md overflow-hidden bg-white/5">
                   {img ? (
                     <img src={img} alt={hobby.title} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-muted">
-                      <Film className="h-6 w-6 text-muted-foreground opacity-30" />
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Film className="h-6 w-6 text-white/20" />
                     </div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
@@ -308,100 +359,212 @@ export default function ProfilePage() {
             );
           })}
         </div>
-      </Card>
+      </div>
     ),
   };
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="relative h-44 sm:h-52 overflow-hidden">
+    <div className="relative min-h-screen max-w-3xl mx-auto overflow-hidden">
+      <div className="fixed inset-0 -z-10">
         <img
-          src={profileCover}
-          alt="Profile cover"
+          src={themeImage}
+          alt="Theme background"
           className="w-full h-full object-cover"
-          data-testid="img-profile-cover"
+          data-testid="img-theme-background"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+        <div className="absolute inset-0 bg-black/30" />
       </div>
 
-      <div className="px-4 sm:px-6 -mt-12 relative z-10 space-y-4">
-        <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4">
-          <Avatar className="h-24 w-24 ring-4 ring-background">
-            <AvatarImage src={user?.profileImageUrl ?? undefined} />
-            <AvatarFallback className="text-2xl font-bold bg-primary/10 text-primary">
-              {(user?.firstName?.[0] ?? "?").toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="text-center sm:text-left flex-1 pb-1">
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-profile-name">
-              {user?.firstName} {user?.lastName}
-            </h1>
-            {profile?.topClusters && profile.topClusters.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center sm:justify-start">
-                {profile.topClusters.map((cluster) => (
-                  <Badge key={cluster} variant="secondary" className="text-xs">
-                    {cluster}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleCustomImage}
+        data-testid="input-custom-theme"
+      />
+
+      <div className="relative">
+        <div className="relative h-44 sm:h-52 overflow-hidden">
+          <img
+            src={themeImage}
+            alt="Profile cover"
+            className="w-full h-full object-cover"
+            data-testid="img-profile-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        </div>
+
+        <div className="absolute top-3 right-3 z-20">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setEditing(!editing)}
-            data-testid="button-edit-profile"
+            size="icon"
+            variant="ghost"
+            onClick={() => setSettingsOpen(!settingsOpen)}
+            className="bg-black/30 backdrop-blur-sm text-white border border-white/10"
+            data-testid="button-settings"
           >
-            <Pencil className="h-3.5 w-3.5 mr-1" />
-            {editing ? "Done" : "Edit Layout"}
+            <Settings className="h-4 w-4" />
           </Button>
         </div>
 
-        {editing && (
-          <Card className="p-4" data-testid="section-editor">
-            <p className="text-xs text-muted-foreground mb-3">
-              Reorder or toggle sections to customize your profile
-            </p>
-            <div className="space-y-1.5">
-              {sections.map((sec, idx) => (
-                <div key={sec.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
-                  <Grip className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-sm flex-1">{sec.title}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => moveSection(idx, -1)}
-                    disabled={idx === 0}
-                  >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => moveSection(idx, 1)}
-                    disabled={idx === sections.length - 1}
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={sec.visible ? "default" : "outline"}
-                    onClick={() => toggleSection(idx)}
-                    className="text-xs"
-                  >
-                    {sec.visible ? "On" : "Off"}
-                  </Button>
-                </div>
-              ))}
+        {settingsOpen && (
+          <div
+            className={cn(GLASS_BASE, "absolute top-14 right-3 z-30 w-72 p-4 bg-black/60 border-white/15")}
+            data-testid="settings-panel"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-white">Profile Settings</h3>
+              <Button size="icon" variant="ghost" onClick={() => setSettingsOpen(false)} className="text-white/60 h-6 w-6">
+                <X className="h-3.5 w-3.5" />
+              </Button>
             </div>
-          </Card>
+
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Palette className="h-3.5 w-3.5 text-white/60" />
+                  <span className="text-xs font-medium text-white/70">Theme</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {THEMES.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => setActiveTheme(theme.id)}
+                      className={cn(
+                        "relative aspect-[3/4] rounded-md overflow-hidden border-2 transition-all",
+                        activeTheme === theme.id ? "border-white ring-1 ring-white/50" : "border-white/10"
+                      )}
+                      data-testid={`button-theme-${theme.id}`}
+                    >
+                      <img src={theme.image} alt={theme.label} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/30 flex items-end justify-center pb-1">
+                        <span className="text-[9px] font-semibold text-white drop-shadow">{theme.label}</span>
+                      </div>
+                      {activeTheme === theme.id && (
+                        <div className="absolute top-1 right-1 bg-white rounded-full p-0.5">
+                          <Check className="h-2.5 w-2.5 text-black" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className={cn(
+                  "w-full flex items-center gap-2 p-2.5 rounded-md text-xs text-white/80 transition-all",
+                  "bg-white/10 border border-white/10",
+                  activeTheme === "custom" && "border-white/30 bg-white/15"
+                )}
+                data-testid="button-custom-theme"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                <span>{customThemeImage ? "Change Custom Image" : "Import Custom Theme"}</span>
+                {activeTheme === "custom" && (
+                  <Check className="h-3 w-3 ml-auto text-emerald-400" />
+                )}
+              </button>
+
+              <div className="border-t border-white/10 pt-3">
+                <button
+                  onClick={() => {
+                    setEditingLayout(!editingLayout);
+                    setSettingsOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 p-2.5 rounded-md text-xs text-white/80 bg-white/10 border border-white/10"
+                  data-testid="button-edit-layout"
+                >
+                  <Grip className="h-3.5 w-3.5" />
+                  <span>{editingLayout ? "Done Editing Layout" : "Edit Layout"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
-        <div className="space-y-4 pb-8">
-          {sections.filter((s) => s.visible).map((sec) => {
-            const renderer = sectionRenderers[sec.id];
-            return renderer ? <div key={sec.id}>{renderer()}</div> : null;
-          })}
+        <div className="px-4 sm:px-6 -mt-12 relative z-10 space-y-4">
+          <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4">
+            <Avatar className="h-24 w-24 ring-4 ring-white/20">
+              <AvatarImage src={user?.profileImageUrl ?? undefined} />
+              <AvatarFallback className="text-2xl font-bold bg-white/10 text-white backdrop-blur-sm">
+                {(user?.firstName?.[0] ?? "?").toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="text-center sm:text-left flex-1 pb-1">
+              <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-lg" data-testid="text-profile-name">
+                {user?.firstName} {user?.lastName}
+              </h1>
+              {profile?.topClusters && profile.topClusters.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center sm:justify-start">
+                  {profile.topClusters.map((cluster) => (
+                    <Badge key={cluster} variant="secondary" className="text-xs bg-white/15 text-white/80 border-white/10 backdrop-blur-sm">
+                      {cluster}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {editingLayout && (
+            <div className={cn(GLASS_BASE, "p-4 bg-black/50 border-white/15")} data-testid="section-editor">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-white/60">
+                  Reorder or toggle sections to customize your profile
+                </p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditingLayout(false)}
+                  className="text-white/60 text-xs"
+                >
+                  Done
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                {sections.map((sec, idx) => (
+                  <div key={sec.id} className="flex items-center gap-2 p-2 rounded-md bg-white/10">
+                    <Grip className="h-3.5 w-3.5 text-white/40 shrink-0" />
+                    <span className="text-sm flex-1 text-white/80">{sec.title}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => moveSection(idx, -1)}
+                      disabled={idx === 0}
+                      className="text-white/60"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => moveSection(idx, 1)}
+                      disabled={idx === sections.length - 1}
+                      className="text-white/60"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={sec.visible ? "default" : "outline"}
+                      onClick={() => toggleSection(idx)}
+                      className="text-xs"
+                    >
+                      {sec.visible ? "On" : "Off"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4 pb-8">
+            {sections.filter((s) => s.visible).map((sec) => {
+              const renderer = sectionRenderers[sec.id];
+              return renderer ? <div key={sec.id}>{renderer()}</div> : null;
+            })}
+          </div>
         </div>
       </div>
     </div>

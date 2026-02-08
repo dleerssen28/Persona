@@ -23,15 +23,18 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - `/explore` - Hobby discovery with match percentages and stock images
 
 ### Profile Page (redesigned)
-- Cover banner image at top
+- Full-screen themed background (Oceanic, Aurora, Ember, or custom image)
+- Cover banner uses theme image with gradient overlay
 - Avatar + name + cluster badges
-- Modular reorderable sections with edit mode:
+- Settings menu (gear icon, top-right) with:
+  - Theme switcher (3 presets + custom image upload)
+  - Edit Layout toggle (section reordering)
+- Glassy see-through sections with backdrop-blur-xl:
   - Top 3 Traits: highest scoring personality traits
   - myDNA Top 3: top movie/music/game matches
   - Taste DNA Radar: full radar chart + bar breakdown
-  - Personal Images: hobby images from top matches
-  - Reels & Hobby Tags: vertical hobby cards with colored tags
-- Edit Layout button toggles section reordering UI
+  - Gallery (Hobby Tags): combined hobby images + vertical reel cards with tags
+- Theme images stored in `client/src/assets/images/theme-*.png`
 
 ### API Endpoints
 - `GET /api/auth/user` - Current authenticated user
