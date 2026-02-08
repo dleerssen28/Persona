@@ -14,14 +14,14 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 ## Architecture
 
 ### Navigation
-- Bottom navigation bar (mobile-style) with 4 tabs: My DNA, For You, Friends, Hobbies
+- Bottom navigation bar (mobile-style) with 4 tabs: My DNA, For You, Events, Friends
 - No sidebar - uses `BottomNav` component fixed at bottom of screen
 
 ### Pages
 - `/` - Landing page (unauthenticated) / Profile page (authenticated)
 - `/recommendations` - Content recommendations across 5 domains
+- `/events` - Event discovery with geolocation-aware scoring
 - `/social` - Social matching with compatibility scores
-- `/explore` - Hobby discovery with match percentages and stock images
 
 ### Profile Page (redesigned)
 - Full-screen themed background (Oceanic, Aurora, Ember, or custom image)
