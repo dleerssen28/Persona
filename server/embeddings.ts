@@ -5,13 +5,35 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
+const MAX_RETRIES = 3;
+
+async function withRetry<T>(fn: () => Promise<T>, retries = MAX_RETRIES): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const status = err?.status || err?.response?.status;
+      const msg = err?.message || String(err);
+      if (status === 429 && !msg.includes("quota") && attempt < retries) {
+        const waitMs = Math.min(1000 * Math.pow(2, attempt), 15000);
+        console.log(`[embeddings] Rate limited, retrying in ${waitMs}ms (attempt ${attempt + 1}/${retries})`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("withRetry exhausted");
+}
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const response = await openai.embeddings.create({
-    model: EMBEDDING_MODEL,
-    input: text.slice(0, 8000),
+  return withRetry(async () => {
+    const response = await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: text.slice(0, 8000),
+    });
+    return response.data[0].embedding;
   });
-  return response.data[0].embedding;
 }
 
 export function buildEmbeddingText(item: {
@@ -57,17 +79,23 @@ export async function storeEmbedding(
 
 export async function generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
-  const batchSize = 100;
+  const batchSize = 20;
   const allEmbeddings: number[][] = [];
 
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize).map(t => t.slice(0, 8000));
-    const response = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
-      input: batch,
+    const embeddings = await withRetry(async () => {
+      const response = await openai.embeddings.create({
+        model: EMBEDDING_MODEL,
+        input: batch,
+      });
+      const sorted = response.data.sort((a, b) => a.index - b.index);
+      return sorted.map(d => d.embedding);
     });
-    const sorted = response.data.sort((a, b) => a.index - b.index);
-    allEmbeddings.push(...sorted.map(d => d.embedding));
+    allEmbeddings.push(...embeddings);
+    if (i + batchSize < texts.length) {
+      await new Promise(r => setTimeout(r, 500));
+    }
   }
 
   return allEmbeddings;
@@ -267,7 +295,16 @@ export function getDistanceBucket(distanceKm: number): string {
   return "> 100 km";
 }
 
-export async function recomputeTasteEmbedding(userId: string): Promise<{ updated: boolean; interactionCount: number }> {
+export async function recomputeTasteEmbedding(userId: string): Promise<{ updated: boolean; interactionCount: number; method: string }> {
+  const profileResult = await pool.query(
+    "SELECT id FROM taste_profiles WHERE user_id = $1",
+    [userId]
+  );
+  if (profileResult.rows.length === 0) {
+    return { updated: false, interactionCount: 0, method: "no_profile" };
+  }
+  const profileId = profileResult.rows[0].id;
+
   const interactionsResult = await pool.query(`
     SELECT i.item_id, i.action, i.weight, it.embedding
     FROM interactions i
@@ -276,10 +313,6 @@ export async function recomputeTasteEmbedding(userId: string): Promise<{ updated
     ORDER BY i.created_at DESC
     LIMIT 200
   `, [userId]);
-
-  if (interactionsResult.rows.length === 0) {
-    return { updated: false, interactionCount: 0 };
-  }
 
   const embeddings: number[][] = [];
   const weights: number[] = [];
@@ -298,24 +331,63 @@ export async function recomputeTasteEmbedding(userId: string): Promise<{ updated
     }
   }
 
-  if (embeddings.length === 0) {
-    return { updated: false, interactionCount: interactionsResult.rows.length };
+  if (embeddings.length > 0) {
+    const profileEmbedding = computeWeightedAverageEmbedding(embeddings, weights);
+    await storeEmbedding("taste_profiles", profileId, profileEmbedding);
+    console.log(`[tasteEmbedding] Recomputed for user ${userId}: ${embeddings.length} items, weights: [${weights.slice(0, 5).join(", ")}${weights.length > 5 ? "..." : ""}]`);
+    return { updated: true, interactionCount: embeddings.length, method: "interactions" };
   }
 
-  const profileEmbedding = computeWeightedAverageEmbedding(embeddings, weights);
+  return { updated: false, interactionCount: 0, method: "no_interactions" };
+}
 
+export async function deriveEmbeddingFromProfile(userId: string): Promise<{ updated: boolean; method: string }> {
   const profileResult = await pool.query(
-    "SELECT id FROM taste_profiles WHERE user_id = $1",
+    `SELECT id, trait_novelty, trait_intensity, trait_cozy, trait_strategy,
+            trait_social, trait_creativity, trait_nostalgia, trait_adventure,
+            top_clusters, embedding
+     FROM taste_profiles WHERE user_id = $1`,
     [userId]
   );
+  if (profileResult.rows.length === 0) {
+    return { updated: false, method: "no_profile" };
+  }
+  const prof = profileResult.rows[0];
 
-  if (profileResult.rows.length > 0) {
-    await storeEmbedding("taste_profiles", profileResult.rows[0].id, profileEmbedding);
-    console.log(`[tasteEmbedding] Recomputed for user ${userId}: ${embeddings.length} items, weights: [${weights.slice(0, 5).join(", ")}${weights.length > 5 ? "..." : ""}]`);
-    return { updated: true, interactionCount: embeddings.length };
+  if (isValidEmbedding(prof.embedding)) {
+    let emb: number[];
+    if (typeof prof.embedding === "string") {
+      emb = prof.embedding.replace(/[\[\]]/g, "").split(",").map(Number);
+    } else {
+      emb = prof.embedding;
+    }
+    if (emb.length === EMBEDDING_DIM) {
+      return { updated: false, method: "already_has_embedding" };
+    }
   }
 
-  return { updated: false, interactionCount: embeddings.length };
+  const first = await recomputeTasteEmbedding(userId);
+  if (first.updated) {
+    return { updated: true, method: "interactions" };
+  }
+
+  const traitText = [
+    `Taste profile traits:`,
+    `novelty=${prof.trait_novelty}`,
+    `intensity=${prof.trait_intensity}`,
+    `cozy=${prof.trait_cozy}`,
+    `strategy=${prof.trait_strategy}`,
+    `social=${prof.trait_social}`,
+    `creativity=${prof.trait_creativity}`,
+    `nostalgia=${prof.trait_nostalgia}`,
+    `adventure=${prof.trait_adventure}`,
+    prof.top_clusters ? `Clusters: ${prof.top_clusters.join(", ")}` : "",
+  ].filter(Boolean).join(". ");
+
+  const embedding = await generateEmbedding(traitText);
+  await storeEmbedding("taste_profiles", prof.id, embedding);
+  console.log(`[tasteEmbedding] Derived from traits for user ${userId}`);
+  return { updated: true, method: "derived_from_traits" };
 }
 
 export async function checkEmbeddingHealth(): Promise<{
