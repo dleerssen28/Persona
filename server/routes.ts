@@ -6,7 +6,7 @@ import { buildTraitsFromSelections, generateClusters, computeMatchScore, compute
 import { TRAIT_AXES, type Domain } from "@shared/schema";
 import { GARV_PROFILE } from "./seed";
 import { hybridRecommend, hybridSocialMatch, hybridEventScore, hybridHobbyScore } from "./hybrid-engine";
-import { recomputeTasteEmbedding, deriveEmbeddingFromProfile, checkEmbeddingHealth, generateBatchEmbeddings, buildEmbeddingText, storeEmbedding, computeWeightedAverageEmbedding, generateEmbedding } from "./embeddings";
+import { recomputeTasteEmbedding, deriveEmbeddingFromProfile, checkEmbeddingHealth, generateBatchEmbeddings, buildEmbeddingText, storeEmbedding, computeWeightedAverageEmbedding, generateEmbedding, resetOpenAIAvailability } from "./embeddings";
 import { pool } from "./db";
 
 export async function registerRoutes(
@@ -521,6 +521,7 @@ export async function registerRoutes(
 
   app.post("/api/admin/backfill-embeddings", async (_req: any, res) => {
     try {
+      resetOpenAIAvailability();
       const errors: { entityType: string; entityId: string; reason: string }[] = [];
       let itemsEmbeddedCreated = 0;
       let eventsEmbeddedCreated = 0;

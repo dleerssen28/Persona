@@ -1,11 +1,74 @@
 import OpenAI from "openai";
 import { pool } from "./db";
+import { createHash } from "crypto";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
 const MAX_RETRIES = 3;
+
+let openaiAvailable: boolean | null = null;
+
+async function checkOpenAIAvailability(): Promise<boolean> {
+  if (openaiAvailable !== null) return openaiAvailable;
+  try {
+    await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: "test",
+    });
+    openaiAvailable = true;
+    console.log("[embeddings] OpenAI API available - using neural embeddings");
+    return true;
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("quota") || msg.includes("billing") || err?.status === 429) {
+      openaiAvailable = false;
+      console.log("[embeddings] OpenAI API quota exceeded - using deterministic embeddings fallback");
+      return false;
+    }
+    openaiAvailable = false;
+    console.log(`[embeddings] OpenAI API unavailable (${msg}) - using deterministic embeddings fallback`);
+    return false;
+  }
+}
+
+export function resetOpenAIAvailability(): void {
+  openaiAvailable = null;
+}
+
+function deterministicEmbedding(text: string): number[] {
+  const embedding = new Array(EMBEDDING_DIM).fill(0);
+  const normalized = text.toLowerCase().trim();
+
+  for (let seed = 0; seed < 8; seed++) {
+    const hash = createHash("sha256").update(`${seed}:${normalized}`).digest();
+    for (let i = 0; i < EMBEDDING_DIM; i++) {
+      const byteIdx = i % hash.length;
+      const val = (hash[byteIdx] / 255.0) * 2 - 1;
+      embedding[i] += val;
+    }
+  }
+
+  const words = normalized.split(/\s+/).filter(w => w.length > 1);
+  for (const word of words) {
+    const wordHash = createHash("sha256").update(word).digest();
+    for (let i = 0; i < EMBEDDING_DIM; i++) {
+      const byteIdx = i % wordHash.length;
+      const val = ((wordHash[byteIdx] / 255.0) * 2 - 1) * 0.3;
+      embedding[i] += val;
+    }
+  }
+
+  const norm = Math.sqrt(embedding.reduce((s, v) => s + v * v, 0));
+  if (norm > 0) {
+    for (let i = 0; i < EMBEDDING_DIM; i++) {
+      embedding[i] /= norm;
+    }
+  }
+
+  return embedding;
+}
 
 async function withRetry<T>(fn: () => Promise<T>, retries = MAX_RETRIES): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -27,6 +90,10 @@ async function withRetry<T>(fn: () => Promise<T>, retries = MAX_RETRIES): Promis
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {
+  const available = await checkOpenAIAvailability();
+  if (!available) {
+    return deterministicEmbedding(text);
+  }
   return withRetry(async () => {
     const response = await openai.embeddings.create({
       model: EMBEDDING_MODEL,
@@ -79,6 +146,12 @@ export async function storeEmbedding(
 
 export async function generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
+
+  const available = await checkOpenAIAvailability();
+  if (!available) {
+    return texts.map(t => deterministicEmbedding(t));
+  }
+
   const batchSize = 20;
   const allEmbeddings: number[][] = [];
 

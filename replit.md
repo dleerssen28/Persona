@@ -51,7 +51,7 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 
 ### Hybrid AI/ML Engine (Embeddings-First)
 - **Embeddings-First Architecture**: ML drives ranking; traits only explain. Fallback to traits only if embeddings missing.
-- **Vector Similarity (55%)**: Neural embeddings via OpenAI text-embedding-3-small, cosine similarity scoring
+- **Vector Similarity (55%)**: Neural embeddings via OpenAI text-embedding-3-small (with deterministic hash-based fallback when API unavailable), cosine similarity scoring
 - **Collaborative Filtering (25%)**: Embedding-based neighbor discovery (top 20 users by tasteEmbedding cosine similarity), weighted action aggregation (love 2.0, save 1.5, like 1.0, view 0.3, skip -0.5), communityPicks with explanations
 - **Trait Explainability (20%)**: 8-axis trait algebra for human-readable "why" explanations only
 - **Scoring Methods**: `embedding` (vector-only), `hybrid` (vector+CF+traits), `trait_fallback` (no embeddings)
