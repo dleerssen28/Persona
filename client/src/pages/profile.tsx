@@ -19,6 +19,8 @@ import { getHobbyImage } from "@/lib/hobby-images";
 import themeOceanic from "@/assets/images/theme-oceanic.png";
 import themeAurora from "@/assets/images/theme-aurora.png";
 import themeEmber from "@/assets/images/theme-ember.png";
+import coverSkateboarding from "@/assets/images/cover-skateboarding.png";
+import profileCover from "@/assets/images/profile-cover.jpg";
 
 const TRAIT_LABELS: Record<string, string> = {
   novelty: "Novelty Seeker",
@@ -149,6 +151,8 @@ export default function ProfilePage() {
   const glassClass = activeTheme === "custom"
     ? "bg-black/40 border-white/15"
     : currentTheme.glassColor;
+
+  const coverImage = coverSkateboarding;
 
   const traits: Record<string, number> = profile
     ? {
@@ -387,12 +391,12 @@ export default function ProfilePage() {
       <div className="relative">
         <div className="relative h-44 sm:h-52 overflow-hidden">
           <img
-            src={themeImage}
+            src={coverImage}
             alt="Profile cover"
             className="w-full h-full object-cover"
             data-testid="img-profile-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
         </div>
 
         <div className="absolute top-3 right-3 z-20">
