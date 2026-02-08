@@ -1,10 +1,11 @@
 import { storage } from "./storage";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { users } from "@shared/models/auth";
 import type { InsertItem, InsertHobby, InsertTasteProfile, InsertEvent } from "@shared/schema";
 import type { UpsertUser } from "@shared/models/auth";
 import { eq, sql } from "drizzle-orm";
 import { items, hobbies, events } from "@shared/schema";
+import { buildEmbeddingText, generateBatchEmbeddings, generateEmbedding, storeEmbedding, computeWeightedAverageEmbedding } from "./embeddings";
 
 const SEED_USERS: { user: UpsertUser; profile: InsertTasteProfile }[] = [
   {
@@ -153,6 +154,7 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "NBA",
     contactInfo: "tickets@nba.com",
     attendeeCount: 18500,
+    locationLat: 34.0430, locationLng: -118.2673,
     traitNovelty: 0.4, traitIntensity: 0.9, traitCozy: 0.2, traitStrategy: 0.6, traitSocial: 0.85, traitCreativity: 0.2, traitNostalgia: 0.5, traitAdventure: 0.6,
   },
   {
@@ -166,6 +168,7 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "Live Nation",
     contactInfo: "info@livenation.com",
     attendeeCount: 20000,
+    locationLat: 40.7505, locationLng: -73.9934,
     traitNovelty: 0.6, traitIntensity: 0.85, traitCozy: 0.15, traitStrategy: 0.2, traitSocial: 0.9, traitCreativity: 0.7, traitNostalgia: 0.4, traitAdventure: 0.6,
   },
   {
@@ -179,6 +182,7 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "CS Club",
     contactInfo: "cs.club@university.edu",
     attendeeCount: 45,
+    locationLat: 37.4275, locationLng: -122.1697,
     traitNovelty: 0.7, traitIntensity: 0.3, traitCozy: 0.4, traitStrategy: 0.8, traitSocial: 0.7, traitCreativity: 0.8, traitNostalgia: 0.2, traitAdventure: 0.4,
   },
   {
@@ -192,6 +196,7 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "Austin Events Co",
     contactInfo: "hello@springfest.com",
     attendeeCount: 35000,
+    locationLat: 30.2672, locationLng: -97.7431,
     traitNovelty: 0.7, traitIntensity: 0.7, traitCozy: 0.3, traitStrategy: 0.2, traitSocial: 0.95, traitCreativity: 0.7, traitNostalgia: 0.3, traitAdventure: 0.8,
   },
   {
@@ -205,6 +210,7 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "HackClub",
     contactInfo: "organizers@hackevent.io",
     attendeeCount: 200,
+    locationLat: 37.4275, locationLng: -122.1697,
     traitNovelty: 0.85, traitIntensity: 0.7, traitCozy: 0.2, traitStrategy: 0.8, traitSocial: 0.7, traitCreativity: 0.9, traitNostalgia: 0.1, traitAdventure: 0.7,
   },
   {
@@ -219,6 +225,7 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "Colin Weis",
     contactInfo: "colin.weis@personagraph.io",
     attendeeCount: 8,
+    locationLat: 37.7749, locationLng: -122.4194,
     traitNovelty: 0.3, traitIntensity: 0.3, traitCozy: 0.9, traitStrategy: 0.2, traitSocial: 0.8, traitCreativity: 0.3, traitNostalgia: 0.6, traitAdventure: 0.2,
   },
   {
@@ -233,6 +240,7 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "Andy Chen",
     contactInfo: "andy.chen@personagraph.io",
     attendeeCount: 6,
+    locationLat: 37.4275, locationLng: -122.1697,
     traitNovelty: 0.4, traitIntensity: 0.6, traitCozy: 0.3, traitStrategy: 0.5, traitSocial: 0.85, traitCreativity: 0.2, traitNostalgia: 0.3, traitAdventure: 0.5,
   },
   {
@@ -247,9 +255,96 @@ const SEED_EVENTS: InsertEvent[] = [
     creatorName: "Devon Leerssen",
     contactInfo: "devon.leerssen@personagraph.io",
     attendeeCount: 10,
+    locationLat: 37.7749, locationLng: -122.4194,
     traitNovelty: 0.4, traitIntensity: 0.3, traitCozy: 0.7, traitStrategy: 0.85, traitSocial: 0.9, traitCreativity: 0.5, traitNostalgia: 0.6, traitAdventure: 0.2,
   },
 ];
+
+async function seedEmbeddings() {
+  if (!process.env.OPENAI_API_KEY) {
+    console.log("Skipping embeddings: OPENAI_API_KEY not set");
+    return;
+  }
+
+  const missingItemEmbeddings = await pool.query(
+    "SELECT id, title, tags, description FROM items WHERE embedding IS NULL"
+  );
+  if (missingItemEmbeddings.rows.length > 0) {
+    console.log(`Generating embeddings for ${missingItemEmbeddings.rows.length} items...`);
+    const texts = missingItemEmbeddings.rows.map(row => buildEmbeddingText({
+      title: row.title,
+      tags: row.tags,
+      description: row.description,
+    }));
+    const embeddings = await generateBatchEmbeddings(texts);
+    for (let i = 0; i < missingItemEmbeddings.rows.length; i++) {
+      await storeEmbedding("items", missingItemEmbeddings.rows[i].id, embeddings[i]);
+    }
+    console.log("Item embeddings complete.");
+  }
+
+  const missingHobbyEmbeddings = await pool.query(
+    "SELECT id, title, tags, description FROM hobbies WHERE embedding IS NULL"
+  );
+  if (missingHobbyEmbeddings.rows.length > 0) {
+    console.log(`Generating embeddings for ${missingHobbyEmbeddings.rows.length} hobbies...`);
+    const texts = missingHobbyEmbeddings.rows.map(row => buildEmbeddingText({
+      title: row.title,
+      tags: row.tags,
+      description: row.description,
+    }));
+    const embeddings = await generateBatchEmbeddings(texts);
+    for (let i = 0; i < missingHobbyEmbeddings.rows.length; i++) {
+      await storeEmbedding("hobbies", missingHobbyEmbeddings.rows[i].id, embeddings[i]);
+    }
+    console.log("Hobby embeddings complete.");
+  }
+
+  const missingEventEmbeddings = await pool.query(
+    "SELECT id, title, tags, description FROM events WHERE embedding IS NULL"
+  );
+  if (missingEventEmbeddings.rows.length > 0) {
+    console.log(`Generating embeddings for ${missingEventEmbeddings.rows.length} events...`);
+    const texts = missingEventEmbeddings.rows.map(row => buildEmbeddingText({
+      title: row.title,
+      tags: row.tags,
+      description: row.description,
+    }));
+    const embeddings = await generateBatchEmbeddings(texts);
+    for (let i = 0; i < missingEventEmbeddings.rows.length; i++) {
+      await storeEmbedding("events", missingEventEmbeddings.rows[i].id, embeddings[i]);
+    }
+    console.log("Event embeddings complete.");
+  }
+
+  const missingProfileEmbeddings = await pool.query(
+    `SELECT tp.id, tp.user_id, u.first_name, u.last_name
+     FROM taste_profiles tp
+     JOIN users u ON tp.user_id = u.id
+     WHERE tp.embedding IS NULL AND tp.onboarding_complete = true`
+  );
+  if (missingProfileEmbeddings.rows.length > 0) {
+    console.log(`Generating embeddings for ${missingProfileEmbeddings.rows.length} seed user profiles...`);
+    for (const row of missingProfileEmbeddings.rows) {
+      const profileItems = await pool.query(
+        `SELECT embedding FROM items WHERE embedding IS NOT NULL ORDER BY random() LIMIT 10`
+      );
+      if (profileItems.rows.length > 0) {
+        const itemEmbeddings = profileItems.rows.map(r => {
+          if (typeof r.embedding === "string") {
+            return r.embedding.replace(/[\[\]]/g, "").split(",").map(Number);
+          }
+          return r.embedding;
+        });
+        const weights = itemEmbeddings.map(() => 1.0);
+        const profileEmbedding = computeWeightedAverageEmbedding(itemEmbeddings, weights);
+        await storeEmbedding("taste_profiles", row.id, profileEmbedding);
+        console.log(`  Embedding for ${row.first_name} ${row.last_name}`);
+      }
+    }
+    console.log("Profile embeddings complete.");
+  }
+}
 
 export async function seedDatabase() {
   const [itemCountResult] = await db.select({ count: sql<number>`count(*)` }).from(items);
@@ -304,5 +399,11 @@ export async function seedDatabase() {
       await storage.createEvent(event);
     }
     console.log(`Seeded ${SEED_EVENTS.length} events.`);
+  }
+
+  try {
+    await seedEmbeddings();
+  } catch (error) {
+    console.error("Error generating embeddings (non-fatal):", error);
   }
 }

@@ -6,7 +6,8 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 ## Tech Stack
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
 - **Backend**: Node.js + Express
-- **Database**: PostgreSQL with Drizzle ORM
+- **Database**: PostgreSQL with Drizzle ORM + pgvector extension
+- **AI/ML**: OpenAI text-embedding-3-small (1536-dim vectors), pgvector HNSW indexes
 - **Auth**: Replit Auth (OpenID Connect)
 - **Routing**: wouter (frontend), Express (backend)
 
@@ -46,7 +47,15 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - `GET /api/explore/hobbies` - Get hobby recommendations
 - `POST /api/demo/bootstrap` - Auto-create demo profile for authenticated user
 
-### Taste Engine
+### Hybrid AI/ML Engine
+- **Vector Similarity (55%)**: Neural embeddings via OpenAI text-embedding-3-small, cosine similarity scoring
+- **Collaborative Filtering (25%)**: SQL-based user-item co-occurrence for "users like you also liked"
+- **Trait Explainability (20%)**: 8-axis trait algebra for human-readable explanations
+- Graceful fallback to trait-only scoring when embeddings unavailable
+- Geolocation-aware event scoring with Haversine distance + privacy radius
+- User taste embeddings updated async on interaction (weighted average of liked item embeddings)
+
+### Taste Engine (Explainability Layer)
 - Trait-based similarity scoring across 8 axes: novelty, intensity, cozy, strategy, social, creativity, nostalgia, adventure
 - Tag-to-trait mapping for building user profiles from preferences
 - Distance-based RMS scoring for realistic match distribution (green 75+, yellow 50-74, red <50)
@@ -67,13 +76,22 @@ Persona is a taste intelligence platform that builds a "Taste DNA" for every use
 - Used in explore page hobby cards, profile personal images, and reels sections
 
 ### Database Tables
-- `users` - Auth users (managed by Replit Auth)
+- `users` - Auth users (managed by Replit Auth) + locationLat/locationLng/privacyRadiusKm
 - `sessions` - Session storage (managed by Replit Auth)
-- `taste_profiles` - User taste DNA with 8 trait axes + clusters
-- `items` - Content items across 5 domains with trait values
+- `taste_profiles` - User taste DNA with 8 trait axes + clusters + embedding vector(1536)
+- `items` - Content items across 5 domains with trait values + embedding vector(1536)
 - `interactions` - User interactions with items (like/love/skip/save)
 - `matches` - Cached match computations
-- `hobbies` - Hobby entries with trait values and descriptions
+- `hobbies` - Hobby entries with trait values + embedding vector(1536)
+- `events` - Events with trait values + embedding vector(1536) + locationLat/locationLng
+- `event_rsvps` - RSVP records linking users to events
+
+### Key Backend Files
+- `server/hybrid-engine.ts` - Hybrid scoring: vector sim + CF + traits
+- `server/embeddings.ts` - OpenAI embedding generation, pgvector queries, user embedding updates
+- `server/taste-engine.ts` - 8-axis trait algebra (explainability layer)
+- `server/seed.ts` - Database seeding with embedding generation pipeline
+- `server/routes.ts` - Express API routes using hybrid engine
 
 ## User Preferences
 - Dark mode by default

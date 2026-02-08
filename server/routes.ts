@@ -5,6 +5,8 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { buildTraitsFromSelections, generateClusters, computeMatchScore, computeItemMatchScore, computeHobbyMatch, getTraitsFromProfile } from "./taste-engine";
 import { TRAIT_AXES, type Domain } from "@shared/schema";
 import { GARV_PROFILE } from "./seed";
+import { hybridRecommend, hybridSocialMatch, hybridEventScore, hybridHobbyScore } from "./hybrid-engine";
+import { updateUserTasteEmbedding } from "./embeddings";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -71,6 +73,10 @@ export async function registerRoutes(
         onboardingComplete: true,
       });
 
+      updateUserTasteEmbedding(userId).catch(err =>
+        console.error("Background embedding update failed:", err)
+      );
+
       res.json(profile);
     } catch (error) {
       console.error("Error during onboarding:", error);
@@ -91,26 +97,19 @@ export async function registerRoutes(
       const allItems = await storage.getItemsByDomain(domain);
       const userInteractions = await storage.getUserInteractions(userId, domain);
       const interactedItemIds = new Set(userInteractions.map((i) => i.itemId));
-
       const availableItems = allItems.filter((item) => !interactedItemIds.has(item.id));
 
-      const scored = availableItems.map((item) => {
-        const itemTraits: Record<string, number> = {};
-        for (const axis of TRAIT_AXES) {
-          const key = `trait${axis.charAt(0).toUpperCase() + axis.slice(1)}` as keyof typeof item;
-          itemTraits[axis] = (item[key] as number) ?? 0.5;
-        }
+      const hybridResults = await hybridRecommend(profile, availableItems, userId, domain);
 
-        const { score, explanation } = computeItemMatchScore(profile, itemTraits);
-
-        return {
-          ...item,
-          matchScore: score,
-          explanation,
-        };
-      });
-
-      scored.sort((a, b) => b.matchScore - a.matchScore);
+      const scored = hybridResults.map(r => ({
+        ...r.item,
+        matchScore: r.hybridScore,
+        explanation: r.explanation,
+        traitExplanation: r.traitExplanation,
+        vectorScore: r.vectorScore,
+        cfScore: r.cfScore,
+        scoringMethod: r.scoringMethod,
+      }));
 
       res.json(scored.slice(0, 12));
     } catch (error) {
@@ -144,6 +143,12 @@ export async function registerRoutes(
         weight: weightMap[action] ?? 1.0,
       });
 
+      if (action === "like" || action === "love" || action === "save") {
+        updateUserTasteEmbedding(userId).catch(err =>
+          console.error("Background embedding update failed:", err)
+        );
+      }
+
       res.json(interaction);
     } catch (error) {
       console.error("Error creating interaction:", error);
@@ -163,12 +168,10 @@ export async function registerRoutes(
       const usersWithProfiles = await storage.getUsersWithProfiles(userId);
 
       const matchedUsers = usersWithProfiles.map(({ user, profile }) => {
-        const { score, color, explanations } = computeMatchScore(myProfile, profile);
+        const hybridResult = hybridSocialMatch(myProfile, profile);
         const traits = getTraitsFromProfile(profile);
 
-        const myInteractions = storage.getUserInteractions(userId);
         const sharedInterests: string[] = [];
-
         if (profile.topClusters) {
           const myCluster = new Set(myProfile.topClusters || []);
           for (const cluster of profile.topClusters) {
@@ -183,8 +186,10 @@ export async function registerRoutes(
           firstName: user.firstName,
           lastName: user.lastName,
           profileImageUrl: user.profileImageUrl,
-          matchScore: score,
-          explanations,
+          matchScore: hybridResult.hybridScore,
+          vectorScore: hybridResult.vectorScore,
+          explanations: hybridResult.explanations,
+          scoringMethod: hybridResult.scoringMethod,
           traits,
           topClusters: profile.topClusters || [],
           sharedInterests,
@@ -204,6 +209,8 @@ export async function registerRoutes(
     try {
       const userId = req.user.claims.sub;
       const category = req.query.category as string | undefined;
+      const userLat = req.query.lat ? parseFloat(req.query.lat as string) : null;
+      const userLng = req.query.lng ? parseFloat(req.query.lng as string) : null;
 
       const profile = await storage.getTasteProfile(userId);
       const allEvents = await storage.getEvents(category);
@@ -213,14 +220,18 @@ export async function registerRoutes(
 
       const eventsWithScore = await Promise.all(allEvents.map(async (event) => {
         let matchScore = 50;
+        let predictedEnjoyment = 50;
+        let distanceBucket: string | null = null;
+        let explanation = "";
+        let scoringMethod = "none";
+
         if (profile) {
-          const eventTraits: Record<string, number> = {};
-          for (const axis of TRAIT_AXES) {
-            const key = `trait${axis.charAt(0).toUpperCase() + axis.slice(1)}` as keyof typeof event;
-            eventTraits[axis] = (event[key] as number) ?? 0.5;
-          }
-          const result = computeItemMatchScore(profile, eventTraits);
-          matchScore = result.score;
+          const result = hybridEventScore(profile, event, userLat, userLng);
+          matchScore = result.hybridScore;
+          predictedEnjoyment = result.predictedEnjoyment;
+          distanceBucket = result.distanceBucket;
+          explanation = result.explanation;
+          scoringMethod = result.scoringMethod;
         }
 
         const rsvps = await storage.getEventRsvps(event.id);
@@ -237,6 +248,10 @@ export async function registerRoutes(
         return {
           ...event,
           matchScore,
+          predictedEnjoyment,
+          distanceBucket,
+          explanation,
+          scoringMethod,
           hasRsvpd: rsvpEventIds.has(event.id),
           rsvpCount: rsvps.length,
           attendees,
@@ -287,16 +302,18 @@ export async function registerRoutes(
         const profile = await storage.getTasteProfile(uid);
         if (!user || !profile) continue;
 
-        const { score, color, explanations } = computeMatchScore(myProfile, profile);
+        const hybridResult = hybridSocialMatch(myProfile, profile);
         matchedAttendees.push({
           id: user.id,
           firstName: user.firstName,
           lastName: user.lastName,
           profileImageUrl: user.profileImageUrl,
           email: user.email,
-          matchScore: score,
-          color,
-          explanations,
+          matchScore: hybridResult.hybridScore,
+          vectorScore: hybridResult.vectorScore,
+          color: hybridResult.color,
+          explanations: hybridResult.explanations,
+          scoringMethod: hybridResult.scoringMethod,
           topClusters: profile.topClusters || [],
         });
       }
@@ -344,18 +361,14 @@ export async function registerRoutes(
       const allHobbies = await storage.getHobbies();
 
       const scored = allHobbies.map((hobby) => {
-        const hobbyTraits: Record<string, number> = {};
-        for (const axis of TRAIT_AXES) {
-          const key = `trait${axis.charAt(0).toUpperCase() + axis.slice(1)}` as keyof typeof hobby;
-          hobbyTraits[axis] = (hobby[key] as number) ?? 0.5;
-        }
-
-        const { score, whyItFits } = computeHobbyMatch(profile, hobbyTraits);
+        const result = hybridHobbyScore(profile, hobby);
 
         return {
           ...hobby,
-          matchScore: score,
-          whyItFits,
+          matchScore: result.hybridScore,
+          whyItFits: result.whyItFits,
+          vectorScore: result.vectorScore,
+          scoringMethod: result.scoringMethod,
           usersDoingIt: Math.floor(Math.random() * 50) + 5,
         };
       });

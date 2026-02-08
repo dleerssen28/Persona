@@ -1,9 +1,24 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, jsonb, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, jsonb, timestamp, boolean, index, doublePrecision, customType } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export * from "./models/auth";
+
+const vector = customType<{ data: number[]; driverParam: string }>({
+  dataType() {
+    return "vector(1536)";
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: unknown): number[] {
+    if (typeof value === "string") {
+      return value.replace(/[\[\]]/g, "").split(",").map(Number);
+    }
+    return value as unknown as number[];
+  },
+});
 
 export const tasteProfiles = pgTable("taste_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -18,6 +33,11 @@ export const tasteProfiles = pgTable("taste_profiles", {
   traitAdventure: real("trait_adventure").default(0.5),
   topClusters: text("top_clusters").array(),
   onboardingComplete: boolean("onboarding_complete").default(false),
+  embedding: vector("embedding"),
+  embeddingUpdatedAt: timestamp("embedding_updated_at"),
+  locationLat: doublePrecision("location_lat"),
+  locationLng: doublePrecision("location_lng"),
+  privacyRadiusKm: real("privacy_radius_km").default(25),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -37,6 +57,8 @@ export const items = pgTable("items", {
   traitCreativity: real("trait_creativity").default(0.5),
   traitNostalgia: real("trait_nostalgia").default(0.5),
   traitAdventure: real("trait_adventure").default(0.5),
+  embedding: vector("embedding"),
+  embeddingUpdatedAt: timestamp("embedding_updated_at"),
 }, (table) => [
   index("items_domain_idx").on(table.domain),
 ]);
@@ -78,6 +100,8 @@ export const hobbies = pgTable("hobbies", {
   traitCreativity: real("trait_creativity").default(0.5),
   traitNostalgia: real("trait_nostalgia").default(0.5),
   traitAdventure: real("trait_adventure").default(0.5),
+  embedding: vector("embedding"),
+  embeddingUpdatedAt: timestamp("embedding_updated_at"),
 });
 
 export const events = pgTable("events", {
@@ -101,6 +125,10 @@ export const events = pgTable("events", {
   traitCreativity: real("trait_creativity").default(0.5),
   traitNostalgia: real("trait_nostalgia").default(0.5),
   traitAdventure: real("trait_adventure").default(0.5),
+  embedding: vector("embedding"),
+  embeddingUpdatedAt: timestamp("embedding_updated_at"),
+  locationLat: doublePrecision("location_lat"),
+  locationLng: doublePrecision("location_lng"),
 }, (table) => [
   index("events_category_idx").on(table.category),
 ]);
@@ -115,11 +143,11 @@ export const eventRsvps = pgTable("event_rsvps", {
   index("event_rsvps_user_idx").on(table.userId),
 ]);
 
-export const insertTasteProfileSchema = createInsertSchema(tasteProfiles).omit({ id: true, updatedAt: true });
-export const insertItemSchema = createInsertSchema(items).omit({ id: true });
+export const insertTasteProfileSchema = createInsertSchema(tasteProfiles).omit({ id: true, updatedAt: true, embedding: true, embeddingUpdatedAt: true });
+export const insertItemSchema = createInsertSchema(items).omit({ id: true, embedding: true, embeddingUpdatedAt: true });
 export const insertInteractionSchema = createInsertSchema(interactions).omit({ id: true, createdAt: true });
-export const insertHobbySchema = createInsertSchema(hobbies).omit({ id: true });
-export const insertEventSchema = createInsertSchema(events).omit({ id: true });
+export const insertHobbySchema = createInsertSchema(hobbies).omit({ id: true, embedding: true, embeddingUpdatedAt: true });
+export const insertEventSchema = createInsertSchema(events).omit({ id: true, embedding: true, embeddingUpdatedAt: true });
 export const insertEventRsvpSchema = createInsertSchema(eventRsvps).omit({ id: true, createdAt: true });
 
 export type TasteProfile = typeof tasteProfiles.$inferSelect;
